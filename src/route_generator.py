@@ -16,7 +16,7 @@ from ribbon_bridge_measurement.msg import *
 class RouteGenerator:
     def __init__(self):
         self.rospack = rospkg.RosPack()
-        self.pkg_path = self.rospack.get_path('ribbon_bridge_sim')
+        self.pkg_path = self.rospack.get_path('ribbon_bridge_path_generate')
 
         #yamlファイルの読み込み
         self.info = yaml.load(open(self.pkg_path + "/config/route_generator.yaml", "r+"))
