@@ -2,6 +2,7 @@
 #coding: utf-8
 import rospy
 import sys
+import time
 
 from std_msgs.msg import *
 from geometry_msgs.msg import *
@@ -15,7 +16,7 @@ class Self_Move():
         self.Target_pose = Pose()
         self.Force_param = 5.0
         self.Torque_param = 10.0
-        self.Target_model = "tug_boat_4"
+        self.Target_model = "tug_boat_9"
         self.Reference_frame = "world"
 
         # DefaultでGoal_poseは決めておく
@@ -38,11 +39,32 @@ class Self_Move():
         self.Max = 100.00
         self.Min = -100.00
 
+        #ステップ応答法
+        #self.Kp = (0.60 * self.T) / (self.K * self.L) #0.60~0.95
+        #self.Ki = 0.60 / (self.K * self.L) #0.60~0.70
+        #self.Kd = (0.30 * self.T) / self.K #0.30~0.45
+
+        #限界感度法でパラメータを求める
+        self.Kp = 5
+        self.Ku = 0.75
+        self.Pu = 60*20#振動の周期
+        self.Ti = 0.5 * self.Pu
+        self.Td = 0.125 * self.Pu
+
+        #self.Kp = 0.6 * self.Ku #0.6
+        self.Ki = 0.0#self.Kp / self.Ti
+        self.Kd = 0.0#self.Kp * self.Td
+
+
         #グラフ描画用
         self.count = 0
+        self.MaxFx = 0.0
+        self.MinFx = 10000.0
         self.list_fx = []
         self.list_now = []
         self.list_count = []
+
+        self.Loop_time = 60*20#秒数
 
 
     def sub_Goal_pose_CB(self, msg):
@@ -172,28 +194,24 @@ class Self_Move():
             rospy.logerr("Service[/gazebo/apply_body_wrench] Exception")
 
     def pid(self):
-        #Kp = (0.60 * self.T) / (self.K * self.L) #0.60~0.95
-        #Ki = 0.60 / (self.K * self.L) #0.60~0.70
-        #Kd = (0.30 * self.T) / self.K #0.30~0.45
-
-        Kp = 1.5
-        Ki = 0.0
-        Kd = 0.0
-
         dist_x = self.Goal_pose.position.x - self.Target_pose.position.x
         dist_y = self.Goal_pose.position.y - self.Target_pose.position.y
 
-        fx = self.Fx + Kp * (dist_x-self.DistX_1) + Ki * dist_x + Kd * ((dist_x-self.DistX_1)-(self.DistX_1-self.DistX_2))
-        fy = self.Fy + Kp * (dist_y-self.DistY_1) + Ki * dist_y + Kd * ((dist_y-self.DistY_1)-(self.DistY_1-self.DistY_2))
+        fx = self.Fx + self.Kp * (dist_x-self.DistX_1) + self.Ki * dist_x + self.Kd * ((dist_x-self.DistX_1)-(self.DistX_1-self.DistX_2))
+        fy = self.Fy + self.Kp * (dist_y-self.DistY_1) + self.Ki * dist_y + self.Kd * ((dist_y-self.DistY_1)-(self.DistY_1-self.DistY_2))
 
         """if fx > self.Max:
+            self.Fx = fx
             fx = self.Max
         if fy > self.Max:
+            self.Fy = fy
             fy = self.Max
 
         if fx < self.Min:
+            self.Fx = fx
             fx = self.Min
         if fy < self.Min:
+            self.Fy = fy
             fy = self.Min"""
 
         self.Add_force_with_param(fx,0.0,0.0,0.0,0.0,0.0)
@@ -217,16 +235,31 @@ class Self_Move():
         self.list_now.append(self.Target_pose.position.x)
         self.list_count.append(self.count)
 
-        if self.count == 10000:
-            plt.plot(self.list_count, self.list_fx, color="blue")
-            #plt.plot(self.list_count, self.list_now, color="green")
+        #if self.MaxFx < fx:
+            #self.MaxFx = fx
+
+        #if self.MinFx > fx:
+            #self.MinFx = fx
+
+        if self.MaxFx < self.Target_pose.position.x:
+            self.MaxFx = self.Target_pose.position.x
+
+        if self.MinFx > self.Target_pose.position.x:
+            self.MinFx = self.Target_pose.position.x
+
+        if time.time() > self.Start_time + self.Loop_time:
+        #if self.count == 50000:
+            #plt.plot(self.list_count, self.list_fx, color="blue")
+            plt.plot(self.list_count, self.list_now, color="green")
             #plt.axhline(self.Goal_pose.position.x, color="red")
             plt.axhline(0.0, color="black")
+            plt.axhline(self.MaxFx, color="red")
+            plt.axhline(self.MinFx, color="red")
             plt.xlim(0,self.count)
-            #plt.ylim(-10,30)
+            plt.ylim(self.MinFx-0.1,self.MaxFx+0.1)
             #plt.pause(0.00001)  # 引数はsleep時間
             #plt.cla()  # 現在描写されているグラフを消去
-            plt.title("Kp:[%s]"%str(Kp))
+            plt.title("Kp:[%s]"%str(self.Kp))
             plt.show()
 
     def processing(self):
@@ -294,13 +327,15 @@ class Self_Move():
 
 
     def main(self):
+        rospy.sleep(0.1)
+        self.Start_time = time.time()#rospy.Time.now()
         while not rospy.is_shutdown():
             #self.processing()
             self.pid()
-            rospy.sleep(0.1)
+            #rospy.sleep(0.1)
 
 if __name__ == "__main__":
-    rospy.init_node("RibbonBridgeSelfMove4")
+    rospy.init_node("RibbonBridgeSelfMove", anonymous=True)
     s = Self_Move()
     s.main()
     rospy.spin()

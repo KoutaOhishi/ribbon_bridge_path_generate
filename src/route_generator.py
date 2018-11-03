@@ -6,6 +6,7 @@ import numpy as np
 import heapq
 import rospy, rospkg
 import datetime
+import math
 
 from geometry_msgs.msg import *
 from sensor_msgs.msg import *
@@ -13,109 +14,152 @@ from cv_bridge import CvBridge, CvBridgeError
 from ribbon_bridge_measurement.msg import *
 
 
-class RouteGenerator:
+class RouteGenerator():
     def __init__(self):
-        self.rospack = rospkg.RosPack()
-        self.pkg_path = self.rospack.get_path('ribbon_bridge_path_generate')
+        self.pkg_path = rospkg.RosPack().get_path('ribbon_bridge_path_generate')
 
-        #yamlファイルの読み込み
-        self.info = yaml.load(open(self.pkg_path + "/config/route_generator.yaml", "r+"))
+        #空撮画像を保存するpath
+        self.img_path = self.pkg_path + "/img/aerial_camera.png"
 
-        #imgファイルのpathの設定
-        self.img_path = self.pkg_path + "/img/" + self.info["img_name"]
-
-        #生成したmapのファイルpathの設定
-        self.map_path = self.pkg_path + "/img/" + self.info["map_name"]
+        #生成したmap画像のpath
+        self.map_path = self.pkg_path + "/img/map.png"
 
         #map作成のために生成した白紙の画像ファイルのpath
         self.blank_map_path = self.pkg_path + "/img/blank.png"
 
+        #空撮画像とmap画像を合わせた画像のpath
+        self.result_path = self.pkg_path + "/img/route.png"
+
         #Subscribeするimgトピック名を取得
-        self.img_topic = str(self.info["img_topic"])
+        self.img_topic_name = "/aerial_camera/camera1/image_raw"
 
-        #imgのwidthとheightを読み込み
-        self.map_width = self.info["img_width"]
-        self.map_height = self.info["img_height"]
+        #imgのwidthとheightの設定(Subscribeの時に更新する)
+        self.map_width = 4096
+        self.map_height = 2160
 
-        #浮体の接触禁止範囲の定義
-        self.contact_area = self.info["contact_area"]
+        #検出した浮体の縦と横の長さを設定
+        self.Boat_width = 0.0
+        self.Boat_height = 0.0
+        self.Boat_diagonal = 0.0
 
-        #生成した経路mapを表示するかどうかの有無
-        self.is_show_map = self.info["show_map"]
+        #costmapの大きさ（浮体の対角線の２倍にする）
+        self.costmap = 0
 
-        #self.img_sub = rospy.Subscriber(self.img_topic, Image, self.img_cb)
+        #複数の浮体の中で何番目を制御対象にするかを指定する
+        self.target_model_index = 0
 
-        #self.map_sub = rospy.Subscriber("/ribbon_bridge_measurement/result_data", RibbonBridges, self.rect_cb)
+        self.Start_pose = Pose()
+        self.TargetRibbonBridge = RibbonBridge()
+        #self.OtherRibbonBridges = RibbonBridges()
 
-        self.center_sub = rospy.Subscriber("/ribbon_bridge_measurement/result_data", RibbonBridges, self.center_cb)
+        self.Goal_pose = Pose()
 
-        self.center_x = 0
-        self.center_y = 0
+        self.sub_Goal_pose = rospy.Subscriber("/ribbon_bridge_path_generate/goal_pose", Pose, self.sub_Goal_pose_CB)
 
+        self.sub_Result_data = rospy.Subscriber("/ribbon_bridge_measurement/result_data", RibbonBridges, self.sub_Result_data_CB)
 
-    def main(self):
-        #img_sub = rospy.Subscriber(self.img_topic, Image, self.img_cb)
-        #map_sub = rospy.Subscriber("/ribbon_bridge_measurement/result_data", RibbonBridge, self.rect_cb)
-        #self.create_blank_map()
-        pass
+        self.sub_Image = rospy.Subscriber(self.img_topic_name, Image, self.sub_Image_CB)
 
-    def center_cb(self, msg):
-        center_x = int(msg.RibbonBridges[0].center.x)
-        center_y = int(msg.RibbonBridges[0].center.y)
-        center_theta = msg.RibbonBridges[0].center.theta
+        #flagで処理のタイミングを制御する
+        self.GetBridgeResultFlag = False
+        self.GetImageFlag = False
+        self.CreatedBlankImageFlag = False
 
-        if self.center_x == center_x and self.center_y == center_y:
-            rospy.loginfo("座標の変化はありません")
+    def sub_Goal_pose_CB(self, msg):
+        self.Goal_pose = msg
 
-        else:
-            self.center_x = center_x
-            self.center_y = center_y
+    def sub_Result_data_CB(self, msg):
+        if self.CreatedBlankImageFlag == True:
+            try:
+                self.TargetRibbonBridge = msg.RibbonBridges[self.target_model_index]
 
-            goal_x = 3000
-            goal_y = 1000
-            goal_theta = 0.0
+                value = pow((self.TargetRibbonBridge.corners[0].x-self.TargetRibbonBridge.corners[2].x),2) + pow((self.TargetRibbonBridge.corners[0].y-self.TargetRibbonBridge.corners[2].y),2)
+                self.Boat_diagonal = math.sqrt(value)
 
-            start = (center_y, center_x)
-            goal = (goal_y, goal_x)
+                self.GetBridgeResultFlag = True
 
-            find_path_flag = False
+                #debug用　本来はTragetRibbonBridgeはコストマップにしない
+                self.create_costmap(self.TargetRibbonBridge.center.x, self.TargetRibbonBridge.center.y, self.Boat_diagonal)
 
-            img = cv2.imread(self.pkg_path + "/img/test.png")
+                """for i in range(len(msg.RibbonBridges)):
+                    if i == self.target_model_index:
+                        #self.Start_pose.position.x = msg.RibbonBridges[self.target_model_index].center.x
+                        #self.Start_pose.position.y = msg.RibbonBridges[self.target_model_index].center.y
+                        self.TargetRibbonBridge = msg.RibbonBridges[i]
 
+                        #検出した浮体の縦と横の長さを計算
+                        #self.Boat_width = self.TargetRibbonBridge.corners[3].x - self.TargetRibbonBridge.corners[1].x
+                        #self.Boat_height = self.TargetRibbonBridge.corners[1].y - self.TargetRibbonBridge.corners[3].y
 
-            #画像サイズを1/10にして処理を早くする#
-            org_H, org_W = img.shape[:2]
-            resize = (org_W/10, org_H/10)
-            resize_img = cv2.resize(img, resize)
-            start = (center_y/10, center_x/10)
-            goal = (goal_y/10, goal_x/10)
-            find_path = self.astar(resize_img, start, goal, self.distance, self.heuristic)
-            #cv2.imwrite(self.pkg_path + "/img/resize.png", resize_img)
-            ###################
+                        #検出した浮体の対角線の長さを計算
+                        value = pow((self.TargetRibbonBridge.corners[0].x-self.TargetRibbonBridge.corners[2].x),2) + pow((self.TargetRibbonBridge.corners[0].y-self.TargetRibbonBridge.corners[2].y),2)
+                        self.Boat_diagonal = math.sqrt(value)
 
-            #find_path = self.astar(img, start, goal, self.distance, self.heuristic)
+                        self.GetBridgeResultFlag = True
 
+                        self.create_costmap(msg.RibbonBridges[i].center.x, msg.RibbonBridges[i].center.y, self.Boat_diagonal)
 
-            if find_path != None:
-                find_path_flag = True
+                    else:
+                        #検出した浮体の対角線の長さを計算
+                        value = pow((msg.RibbonBridges[i].corners[0].x-msg.RibbonBridges[i].corners[2].x), 2) + pow((msg.RibbonBridges[i].corners[0].y-msg.RibbonBridges[i].corners[2].y), 2)
+                        diagonal = math.sqrt(value)
 
+                        #costmapに追加する
+                        self.create_costmap(msg.RibbonBridges[i].center.x, center.y, diagonal)"""
 
-            if find_path_flag == False:
-                rospy.logerr("RouteGenerator -> Can not Find Path ")
+            except:
+                rospy.logerr("[%s] is OUT of LENGTH of [/ribbon_bridge_measurement/result_data]"%str(self.target_model_index))
 
-            elif find_path_flag == True:
-                rospy.loginfo("RouteGenerator -> Found Path ")
-                self.make_result_img(start, goal, find_path)
-                self.make_result_img_x10(start, goal, find_path)
+    def sub_Image_CB(self, msg):
+        try:
+            #rospy.loginfo("Subscribed Image Topic !")
+            self.map_width = msg.width
+            self.map_height = msg.height
 
+            cv_img = CvBridge().imgmsg_to_cv2(msg, "bgr8")
 
+            cv2.imwrite(self.img_path, cv_img)
 
-            path_img = cv2.imread(self.pkg_path + "/img/path.png")
-            cv2.circle(path_img, (center_x,center_y), 20, (255,0,0), -1)
+            self.create_blank_map()
 
+            self.GetImageFlag = True
 
-            cv2.imwrite(self.pkg_path + "/img/path.png", path_img)
+        except CvBridgeError, e:
+            rospy.logerror("Failed to Subscribe Image Topic")
 
+    def create_blank_map(self):
+        """ 入力画像と同じサイズの白い画像を生成する """
+        # cv2.rectangleで埋めるだけ
+        blank_img = np.zeros((self.map_height, self.map_width), dtype=np.uint8)
+
+        cv2.rectangle(blank_img,(0,0),(self.map_width, self.map_height),(255,255,255),-1)
+
+        #cv2.circle(blank_img, (int(self.TargetRibbonBridge.center.x), int(self.TargetRibbonBridge.center.y)), 10, (0,0,0), -1)
+        #cv2.circle(blank_img, (int(self.TargetRibbonBridge.corners[0].x), int(self.TargetRibbonBridge.corners[0].y)), 10, (0,0,255), -1)
+        #cv2.circle(blank_img, (int(self.TargetRibbonBridge.corners[2].x), int(self.TargetRibbonBridge.corners[2].y)), 10, (0,0,255), -1)
+
+        cv2.imwrite(self.blank_map_path, blank_img)
+        cv2.imwrite(self.map_path, blank_img)
+
+        self.CreatedBlankImageFlag = True
+
+    def create_costmap(self, centerX, centerY, radius):
+        costmap = cv2.imread(self.map_path)
+
+        cv2.circle(costmap, (int(centerX), int(centerY)), int(radius), (0,0,0), -1)
+
+        cv2.imwrite(self.map_path, costmap)
+
+    def show_img(self):
+        img = cv2.imread(self.map_path)
+
+        try:
+            show_img_size = (self.map_width/10, self.map_height/10)
+            show_img = cv2.resize(img, show_img_size)
+            cv2.imshow("path_image", show_img)
+            cv2.waitKey(1)
+        except:
+            pass
 
     def astar(self, map_img, init, goal, distance=lambda path: len(path), heuristic=lambda pos: 0):
         """ A*で経路生成、成功するとpathが返ってくる。経路生成に失敗するとNoneを返す """
@@ -123,6 +167,14 @@ class RouteGenerator:
         init_score = self.distance([init]) + self.heuristic(init, goal)
         checked = {init: init_score}
         heapq.heappush(queue, (init_score, [init]))
+
+        ##########
+        print "##########"
+        print init
+        print goal
+        print map_img.shape
+        print "##########"
+        ##########
         while len(queue) > 0:
             score, path = heapq.heappop(queue)
             last = path[-1]
@@ -155,14 +207,13 @@ class RouteGenerator:
         return len(path)
 
     def make_result_img(self, start, goal, path):
-        map_color = cv2.imread(self.pkg_path + "/img/resize.png")
+        map_color = cv2.imread(self.pkg_path + "/img/resize_costmap.png")
         for i in range(len(path)):
             cv2.circle(map_color,(path[i][1], path[i][0]), 1, (0,0,255), -1)
         cv2.circle(map_color,(path[-1][1], path[-1][0]), 4, (0,255,0), -1)
         cv2.circle(map_color,(start[1], start[0]), 4, (0,0,255), -1)
         cv2.circle(map_color,(goal[1], goal[0]), 4, (255,0,255), -1)
-
-        show_img_size = (self.map_height/5, self.map_width/5)
+        show_img_size = (self.map_height/10, self.map_width/10)
         show_img = cv2.resize(map_color, show_img_size)
         cv2.imshow("path_image", show_img)
         cv2.waitKey(1)
@@ -191,81 +242,56 @@ class RouteGenerator:
         cv2.imshow("path_image x 10", show_img)
         cv2.waitKey(1)
 
+    def generate_path(self):
+        start_x = int(self.TargetRibbonBridge.center.x)
+        start_y = int(self.TargetRibbonBridge.center.y)
 
-    def rect_cb(self, msg):
-        center_x = int(msg.RibbonBridges[0].center.x)
-        center_y = int(msg.RibbonBridges[0].center.y)
-        center_theta = msg.RibbonBridges[0].center.theta
+        goal_x = int(self.Goal_pose.position.x)
+        goal_y = int(self.Goal_pose.position.y)
 
-        corner_0 = msg.RibbonBridges[0].corners[0]
-        corner_1 = msg.RibbonBridges[0].corners[1]
-        corner_2 = msg.RibbonBridges[0].corners[2]
-        corner_3 = msg.RibbonBridges[0].corners[3]
+        start = (start_y, start_x)
+        goal = (goal_y, goal_x)
 
-        #検出した浮体の縦と横の長さを計算
-        boat_w = int(corner_3.x - corner_1.x)
-        boat_h = int(corner_1.y - corner_3.y)
+        print "start to generate_path"
 
-        #検出した浮体の縦横の長さで大きい方を円の半径とする
-        if boat_h >= boat_w:
-            radius = boat_w
+        #1/10のサイズにして計算する
+        costmap = cv2.imread(self.map_path)
+        new_size = (self.map_width/10, self.map_height/10)
+        resize_costmap = cv2.resize(costmap, new_size)
+        cv2.imwrite(self.pkg_path + "/img/resize_costmap.png", resize_costmap)
+        start = (start_y/10, start_x/10)
+        goal = (goal_y/10, goal_x/10)
+        find_path = self.astar(resize_costmap, start, goal, self.distance, self.heuristic)
 
-        else:
-            radius = boat_h
-
-        map_raw = cv2.imread(self.blank_map_path)
-        ret, map_thresh = cv2.threshold(map_raw, 210, 255, cv2.THRESH_BINARY)
-
-        cv2.rectangle(map_raw, (int(corner_1.x), int(corner_1.y)), (int(corner_3.x), int(corner_3.y)), (0,0,0), -1)
-
-        """
-        for x in range(self.map_height/10):
-            for y in range(self.map_width/10):
-                pixelValue = map_thresh[y*10][x*10][0]
-                if pixelValue == 0:
-                    cv2.circle(map_raw,(x*10,y*10), self.contact_area, (0,0,255), -1)#costの付与
-        """
-
-        cv2.circle(map_raw,(center_x, center_y), radius, (0,0,0), -1)#costの付与
-
-        cv2.rectangle(map_raw, (int(corner_1.x), int(corner_1.y)), (int(corner_3.x), int(corner_3.y)), (0,0,255), 3)
-
-        save_path = self.pkg_path + "/img/" + "cost.png"
-
-        cv2.imwrite(save_path, map_raw)
-
-        if self.is_show_map == True:
-            show_img_size = (self.map_height/10, self.map_width/10)
-            show_img = cv2.resize(map_raw, show_img_size)
-            cv2.imshow("map", show_img)
-            cv2.waitKey(1)
+        if find_path != None:
+            rospy.loginfo("RouteGenerator -> Found Path ")
+            self.make_result_img(start, goal, find_path)
 
         else:
-            pass
+            rospy.logerr("RouteGenerator -> Can not Find Path ")
 
 
-    def create_blank_map(self):
-        """ 入力画像と同じサイズの白い画像を生成する """
-        # cv2.rectangleで埋めるだけ
-        blank_img = np.zeros((self.map_width, self.map_height), dtype=np.uint8)
+    def main(self):
 
-        cv2.rectangle(blank_img,(0,0),(self.map_height, self.map_width),(255,255,255),-1)
+        self.Goal_pose.position.x = 500
+        self.Goal_pose.position.y = 1000
 
-        cv2.imwrite(self.blank_map_path, blank_img)
+        while not rospy.is_shutdown():
+            #必要な情報がsubscribeされるまでストップする
+            if self.GetImageFlag == True and self.GetBridgeResultFlag == True:
+                self.create_blank_map()
+                break
+
+        while not rospy.is_shutdown():
+            #self.show_img()
+            self.generate_path()
 
 
-    def img_cb(self, msg):
-        try:
-            #rospy.loginfo("Subscribed Image Topic !")
-            cv_img = CvBridge().imgmsg_to_cv2(msg, "bgr8")
 
-            cv2.imwrite(self.img_path, cv_img)
 
-        except CvBridgeError, e:
-            rospy.logerror("Failed to Subscribe Image Topic")
 
 if __name__ == "__main__":
-    rospy.init_node("route_generator_node")
+    rospy.init_node("RouteGenerator", anonymous=True)
     rg = RouteGenerator()
     rg.main()
     rospy.spin()
