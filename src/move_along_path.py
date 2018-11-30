@@ -376,12 +376,13 @@ class MoveAlongPath():
             self.ArrivedFlag_Y == False
 
             while not rospy.is_shutdown():
-                if self.sub_Boat_num.get_num_connections == 0:
+                if self.sub_Boat_num.get_num_connections() == 0:
                     #YOLOのノードとの接続が切れた場合
                     self.stop_ribbon_bridge("x")
                     self.stop_ribbon_bridge("y")
                     self.stop_ribbon_bridge("z")
                     rospy.logwarn("YOLO has Dead")
+                    rospy.sleep(1)
 
                 else:
                     self.move()
