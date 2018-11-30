@@ -272,21 +272,21 @@ class RouteGenerator():
                 path_msg.poses.append(poseStamped)
 
             else:
-                x = path[i+1][0]-path[i-1][0]
-                y = path[i+1][1]-path[i-1][1]
+                increaseX = path[i+1][0]-path[i-1][0]
+                increaseY = path[i+1][1]-path[i-1][1]
 
-                if x == 0 and y == 0:
+                if increaseX == 0 and increaseY == 0:
                     pass
 
                 else:
-                    if x == 0:
-                        slope = y
+                    if increaseX == 0:
+                        slope = increaseY
 
-                    elif y == 0:
-                        slope = x
+                    elif increaseY == 0:
+                        slope = increaseX
 
                     else:
-                        slope = y/x
+                        slope = increaseY/increaseX
 
                     if slope != previous_slope:
                         poseStamped = PoseStamped()
