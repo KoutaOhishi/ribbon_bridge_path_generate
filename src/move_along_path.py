@@ -21,7 +21,9 @@ class MoveAlongPath():
         self.Model_pose = Pose()
         self.pastModel_pose = Pose()
         self.Model_corners = [(0,0),(0,0),(0,0),(0,0)]
-        self.Boat_diagonal = 10.0
+        self.Boat_diagonal = 1000
+
+        self.Boat_num = 0 #YOLOで認識した浮体の数
 
         self.Goal_pose = Pose()
         self.True_Model_state = ModelState() #浮体の位置の真値
@@ -45,8 +47,11 @@ class MoveAlongPath():
 
         self.sub_Path = rospy.Subscriber("ribbon_bridge_path_generate/path", Path, self.sub_Path_CB)
 
+        self.sub_Boat_num = rospy.Subscriber("/darknet_ros/found_object", Int8, self.sub_Boat_num_CB) #YOLOのノードとの接続を確認するために作成
+
         self.pub_Model_pose = rospy.Publisher("/gazebo/set_model_state", ModelState, queue_size=1)
         #self.pub_Model_pose = rospy.Publisher("/gazebo/set_link_state", LinkState, queue_size=1)
+
 
         #PID制御用のパラメータ
         self.DistX_1 = 0.0
@@ -68,6 +73,9 @@ class MoveAlongPath():
         self.ArrivedFlag_X = False
         self.ArrivedFlag_Y = False
         self.ArrivedFlag_Z = False
+
+    def sub_Boat_num_CB(self, msg):
+        self.Boat_num = msg
 
     def sub_Path_CB(self, msg):
         if self.Path == msg:
@@ -114,8 +122,6 @@ class MoveAlongPath():
 
         #pub_msg = LinkState()
         #pub_msg.link_name = self.Model_name + "::body"
-
-
         pub_msg.pose = self.True_Model_state.pose
         pub_msg.twist = self.True_Model_state.twist
 
@@ -185,20 +191,21 @@ class MoveAlongPath():
             print "There are no RibbonBridges"
 
         else:
-            #self.Model_pose.position.x = msg.RibbonBridges[i].center.x
-            #self.Model_pose.position.y = msg.RibbonBridges[i].center.y
-
             dist_list = []
             for i in range(len(msg.RibbonBridges)):
                 dist = math.sqrt(pow(self.pastModel_pose.position.x-msg.RibbonBridges[i].center.x,2)+pow(self.pastModel_pose.position.y-msg.RibbonBridges[i].center.y,2))
 
-                #if dist < self.Boat_diagonal:
-                dist_list.append(dist)
+                if dist < self.Boat_diagonal:
+                    dist_list.append(dist)
+
+            #print "Boat_diagonal:[%s]"%str(self.Boat_diagonal)
+            #print "dist_list:[%s]"%str(dist_list)
 
             if len(dist_list) == 0:#条件を満たす浮体がいない場合
                 self.stop_ribbon_bridge("x")
                 self.stop_ribbon_bridge("y")
                 self.stop_ribbon_bridge("z")
+                rospy.logwarn("RibbonBridge LOST")
 
             else:
                 target_index = dist_list.index(min(dist_list))
@@ -320,9 +327,6 @@ class MoveAlongPath():
             pass
 
         else:
-            #dist_x = self.Model_pose.position.x - self.Goal_pose.position.x
-            #dist_y = self.Model_pose.position.y - self.Goal_pose.position.y
-
             dist_x = self.Goal_pose.position.x - self.Model_pose.position.x
             dist_y = self.Model_pose.position.y - self.Goal_pose.position.y
 
@@ -334,7 +338,6 @@ class MoveAlongPath():
             fx = self.Fx + self.Kp * (dist_x-self.DistX_1) + self.Ki * dist_x + self.Kd * ((dist_x-self.DistX_1)-(self.DistX_1-self.DistX_2))
             fy = self.Fy + self.Kp * (dist_y-self.DistY_1) + self.Ki * dist_y + self.Kd * ((dist_y-self.DistY_1)-(self.DistY_1-self.DistY_2))
 
-            #self.Add_force_with_param(-dist_x,dist_y,0.0,0.0,0.0,0.0)
             self.Add_force_with_param(fx,fy,0.0,0.0,0.0,0.0)
 
             self.Fx = fx
@@ -357,15 +360,11 @@ class MoveAlongPath():
                 rospy.loginfo("***** Start *****")
                 break
 
-        i = 0
-        #for i in range(len(self.Path.poses)):
-        while not rospy.is_shutdown():
+        for i in range(len(self.Path.poses)):
+        #while not rospy.is_shutdown():
             rospy.sleep(1)
             if i == len(self.Path.poses):
                 break
-
-            self.ArrivedFlag_X == False
-            self.ArrivedFlag_Y == False
 
             self.Goal_pose.position.x = self.Path.poses[i].pose.position.y
             self.Goal_pose.position.y = self.Path.poses[i].pose.position.x
@@ -373,22 +372,31 @@ class MoveAlongPath():
             self.Goal_pose.orientation.z = 0.707
             self.Goal_pose.orientation.w = 0.707
 
+            self.ArrivedFlag_X == False
+            self.ArrivedFlag_Y == False
+
             while not rospy.is_shutdown():
-                self.move()
-                print "%s/%s"%(str(i), str(len(self.Path.poses)))
+                if self.sub_Boat_num.get_num_connections == 0:
+                    #YOLOのノードとの接続が切れた場合
+                    self.stop_ribbon_bridge("x")
+                    self.stop_ribbon_bridge("y")
+                    self.stop_ribbon_bridge("z")
+                    rospy.logwarn("YOLO has Dead")
 
-                #print "---"
-                #for i in range(len(self.Path.poses)):
-                    #print "x:[%s] y:[%s]"%(str(self.Path.poses[i].pose.position.x), str(self.Path.poses[i].pose.position.y))
+                else:
+                    self.move()
+                    print "%s/%s"%(str(i), str(len(self.Path.poses)))
+
+                    #print "---"
+                    #for i in range(len(self.Path.poses)):
+                        #print "x:[%s] y:[%s]"%(str(self.Path.poses[i].pose.position.x), str(self.Path.poses[i].pose.position.y))
 
 
-                if self.ArrivedFlag_X == True and self.ArrivedFlag_Y == True:
-                    self.ArrivedFlag_X == False
-                    self.ArrivedFlag_Y == False
-                    rospy.loginfo("next sub-Goal Position")
-                    break
-
-            i += 1
+                    if self.ArrivedFlag_X == True and self.ArrivedFlag_Y == True:
+                        self.ArrivedFlag_X == False
+                        self.ArrivedFlag_Y == False
+                        rospy.loginfo("next sub-Goal Position")
+                        break
 
         self.Goal_pose.position.x = self.Path.poses[len(self.Path.poses)-1].pose.position.y
         self.Goal_pose.position.y = self.Path.poses[len(self.Path.poses)-1].pose.position.x
@@ -396,7 +404,8 @@ class MoveAlongPath():
         while not rospy.is_shutdown():
             self.move()
 
-        rospy.loginfo("***** Arrived *****")
+            if self.ArrivedFlag_X == True and self.ArrivedFlag_Y == True:
+                rospy.loginfo("***** Arrived *****")
 
 
 
