@@ -47,7 +47,7 @@ class SelfMove():
         self.Fx = 0.0
         self.Fy = 0.0
         self.Fz = 0.0
-        self.Kp = 0.1
+        self.Kp = 1.0
         self.Ki = 0.0
         self.Kd = 0.0
         self.count = 1
@@ -71,12 +71,16 @@ class SelfMove():
         pub_msg.twist = self.True_Model_state.twist
 
         if way == "x":
-            pub_msg.twist.linear.y = 0.0
+            pub_msg.twist.linear.x = 0.0
+            if self.ArrivedFlag_Y == True:
+                pub_msg.twist.linear.y = 0.0
             self.pub_Model_pose.publish(pub_msg)
             rospy.sleep(0.1)
 
         elif way == "y":
-            pub_msg.twist.linear.x = 0.0
+            pub_msg.twist.linear.y = 0.0
+            if self.ArrivedFlag_X == True:
+                pub_msg.twist.linear.x = 0.0
             self.pub_Model_pose.publish(pub_msg)
             rospy.sleep(0.1)
 
@@ -255,10 +259,12 @@ class SelfMove():
         fy = self.Fy + self.Kp * (dist_y-self.DistY_1) + self.Ki * dist_y + self.Kd * ((dist_y-self.DistY_1)-(self.DistY_1-self.DistY_2))
         tz = self.Fz + self.Kp * (dist_z-self.DistZ_1) + self.Ki * dist_z + self.Kd * ((dist_z-self.DistZ_1)-(self.DistZ_1-self.DistZ_2))
 
-        if self.ArrivedFlag_X == True:
+        if dist_x < self.Arrival_distance:
+        #if self.ArrivedFlag_X == True:
             fx = 0.0
 
-        if self.ArrivedFlag_Y == True:
+        if dist_y <  self.Arrival_distance:
+        #if self.ArrivedFlag_Y == True:
             fy = 0.0
 
         tz = 0.0

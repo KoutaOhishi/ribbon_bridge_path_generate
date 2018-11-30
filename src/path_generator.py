@@ -52,6 +52,7 @@ class RouteGenerator():
         self.Start_pose = Pose()
         self.pastStart_pose = Pose()
         self.TargetRibbonBridge = RibbonBridge()
+        self.RibbonBridges = RibbonBridges()
         #self.OtherRibbonBridges = RibbonBridges()
 
         self.Goal_pose = Pose()
@@ -75,50 +76,46 @@ class RouteGenerator():
 
     def sub_Result_data_CB(self, msg):
         #rospy.loginfo("Subscribed result_data")
-        self.GetBridgeResultFlag = True
-
-        #並び替えの処理（暫定版)ribbon_bridge_measurementの方でする予定
-        #x_list = []
-        #for i in range(len(msg.RibbonBridges)):
-            #x_list.append(msg.RibbonBridges[i].corners[0])
-        #x_min_index = x_list.index(min(x_list))
-        ###########################################################
-
-        #トラッキング処理(暫定版)
         if len(msg.RibbonBridges) == 0:
             print "There are no RibbonBridges"
 
         else:
+            self.GetBridgeResultFlag = True
+            self.RibbonBridges = msg.RibbonBridges
+
+    def create_costmap(self):
+        if len(self.RibbonBridges) == 0:
+            print "There are no RibbonBridges"
+
+        else:
+            #トラッキング処理(暫定版)
             dist_list = []
-            for i in range(len(msg.RibbonBridges)):
-                dist = math.sqrt(pow(self.pastStart_pose.position.x-msg.RibbonBridges[i].center.x,2)+pow(self.pastStart_pose.position.y-msg.RibbonBridges[i].center.y,2))
+            for i in range(len(self.RibbonBridges)):
+                dist = math.sqrt(pow(self.pastStart_pose.position.x-self.RibbonBridges[i].center.x,2)+pow(self.pastStart_pose.position.y-self.RibbonBridges[i].center.y,2))
+
+                #if dist < self.Boat_diagonal:
                 dist_list.append(dist)
 
             target_index = dist_list.index(min(dist_list))
-            self.Start_pose.position.x = msg.RibbonBridges[target_index].center.x
-            self.Start_pose.position.y = msg.RibbonBridges[target_index].center.y
+            self.Start_pose.position.x = self.RibbonBridges[target_index].center.x
+            self.Start_pose.position.y = self.RibbonBridges[target_index].center.y
             self.pastStart_pose = self.Start_pose
-
 
             if self.CreatedBlankImageFlag == True:
                 try:
-                    #self.TargetRibbonBridge = msg.RibbonBridges[self.target_model_index]
-                    self.TargetRibbonBridge = msg.RibbonBridges[target_index]
+                    self.TargetRibbonBridge = self.RibbonBridges[target_index]
 
-                    value = pow((self.TargetRibbonBridge.corners[0].x-self.TargetRibbonBridge.corners[2].x),2) + pow((self.TargetRibbonBridge.corners[0].y-self.TargetRibbonBridge.corners[2].y),2)
-                    self.Boat_diagonal = math.sqrt(value)
+                    diagonal = pow((self.TargetRibbonBridge.corners[0].x-self.TargetRibbonBridge.corners[2].x),2) + pow((self.TargetRibbonBridge.corners[0].y-self.TargetRibbonBridge.corners[2].y),2)
+                    self.Boat_diagonal = math.sqrt(diagonal)
 
-                    #debug用　本来はTragetRibbonBridgeはコストマップにしない
-                    #self.create_costmap(self.TargetRibbonBridge.center.x, self.TargetRibbonBridge.center.y, self.Boat_diagonal/2)
-
-                    for i in range(len(msg.RibbonBridges)):
+                    for i in range(len(self.RibbonBridges)):
                         if i == target_index:
                             pass
                         else:
-                            self.create_costmap(msg.RibbonBridges[i].center.x, msg.RibbonBridges[i].center.y, self.Boat_diagonal/1.5)
+                            self.add_cost(self.RibbonBridges[i].center.x, self.RibbonBridges[i].center.y, self.Boat_diagonal*2)
 
                 except:
-                    rospy.logerr("The index:[%s] is OUT of LENGTH of [/ribbon_bridge_measurement/result_data]"%str(self.target_model_index))
+                    rospy.logerr("The index:[%s] is OUT of LENGTH of [/ribbon_bridge_measurement/result_data]"%str(target_index))
 
     def sub_Image_CB(self, msg):
         try:
@@ -136,8 +133,6 @@ class RouteGenerator():
             # そのままのサイズで保存
             cv2.imwrite(self.pkg_path + "/img/aerial_camera_.png", cv_img)
 
-            #self.create_blank_map()
-
             self.GetImageFlag = True
 
         except CvBridgeError, e:
@@ -151,21 +146,23 @@ class RouteGenerator():
 
         cv2.rectangle(blank_img,(0,0),(self.map_width, self.map_height),(255,255,255),-1)
 
-        #cv2.circle(blank_img, (int(self.TargetRibbonBridge.center.x), int(self.TargetRibbonBridge.center.y)), 10, (0,0,0), -1)
-        #cv2.circle(blank_img, (int(self.TargetRibbonBridge.corners[0].x), int(self.TargetRibbonBridge.corners[0].y)), 10, (0,0,255), -1)
-        #cv2.circle(blank_img, (int(self.TargetRibbonBridge.corners[2].x), int(self.TargetRibbonBridge.corners[2].y)), 10, (0,0,255), -1)
-
         cv2.imwrite(self.blank_map_path, blank_img)
         cv2.imwrite(self.map_path, blank_img)
 
         self.CreatedBlankImageFlag = True
 
-    def create_costmap(self, centerX, centerY, radius):
+    def add_cost(self, centerX, centerY, radius):
         costmap = cv2.imread(self.map_path)
 
         cv2.circle(costmap, (int(centerX), int(centerY)), int(radius), (0,0,0), -1)
 
         cv2.imwrite(self.map_path, costmap)
+
+
+        show_img_size = (self.map_width/10, self.map_height/10)
+        show_img = cv2.resize(costmap, show_img_size)
+        cv2.imshow("costmap", show_img)
+        cv2.waitKey(1)
 
     def show_img(self):
         img = cv2.imread(self.map_path)
@@ -174,7 +171,7 @@ class RouteGenerator():
             show_img_size = (self.map_width/10, self.map_height/10)
             show_img = cv2.resize(img, show_img_size)
             cv2.imshow("path_image", show_img)
-            cv2.waitKey(10)
+            cv2.waitKey(1)
         except:
             pass
 
@@ -257,7 +254,54 @@ class RouteGenerator():
         ### 引数のpathは1/10のサイズで計測したものなので注意
         path_msg = Path()
 
+        previous_slope = 1
+        previous_x = 0
+        previous_y = 0
         for i in range(len(path)):
+            #print "x:[%s] y:[%s]"%(str(path[i][0]),str(path[i][1]))
+            if i == 0:
+                poseStamped = PoseStamped()
+                poseStamped.pose.position.x = path[i][0]*10
+                poseStamped.pose.position.y = path[i][1]*10
+                path_msg.poses.append(poseStamped)
+
+            elif i == len(path)-1:
+                poseStamped = PoseStamped()
+                poseStamped.pose.position.x = path[i][0]*10
+                poseStamped.pose.position.y = path[i][1]*10
+                path_msg.poses.append(poseStamped)
+
+            else:
+                x = path[i+1][0]-path[i-1][0]
+                y = path[i+1][1]-path[i-1][1]
+
+                if x == 0 and y == 0:
+                    pass
+
+                else:
+                    if x == 0:
+                        slope = y
+
+                    elif y == 0:
+                        slope = x
+
+                    else:
+                        slope = y/x
+
+                    if slope != previous_slope:
+                        poseStamped = PoseStamped()
+                        poseStamped.pose.position.x = path[i-1][0]*10
+                        poseStamped.pose.position.y = path[i-1][1]*10
+                        path_msg.poses.append(poseStamped)
+
+                    previous_slope = slope
+                previous_x = path[i][0]
+                previous_y = path[i][1]
+
+
+
+        #1/10のサイズで計測した時用
+        """for i in range(len(path)):
             poseStamped = PoseStamped()
             poseStamped.pose.position.x = path[i][0]*10
             poseStamped.pose.position.y = path[i][1]*10
@@ -265,8 +309,9 @@ class RouteGenerator():
 
         poseStamped = PoseStamped()
         poseStamped.pose.position.x = goal[0]*10
-        poseStamped.pose.position.y = goal[1]*10
+        poseStamped.pose.position.y = goal[1]*10"""
 
+        #そのままのサイズで計測した時用
         """for i in range(len(path)):
             poseStamped = PoseStamped()
             poseStamped.pose.position.x = path[i][0]
@@ -279,8 +324,8 @@ class RouteGenerator():
         path_msg.poses.append(poseStamped)"""
 
         self.pub_path.publish(path_msg)
-
         self.GeneratePathFlag = True
+
 
 
     def generate_path(self):
@@ -316,27 +361,23 @@ class RouteGenerator():
 
             if find_path != None:
                 rospy.loginfo("RouteGenerator -> Found Path ")
+
                 self.publish_path_msg(start, goal, find_path)
 
                 self.make_result_img(start, goal, find_path)
                 #self.make_result_img_x10(start, goal, find_path)
-
-                self.create_blank_map() #mapをクリアする
-
 
             else:
                 rospy.logwarn("RouteGenerator -> Can not Find Path ")
                 pass
 
         except:
-            #rospy.logerr("RouteGenerator -> Error ")
+            rospy.logerr("RouteGenerator -> Error ")
             pass
 
     def main(self):
-        rospy.loginfo("***** start *****")
-
-        self.Goal_pose.position.x = self.map_width/2
-        self.Goal_pose.position.y = self.map_height/2
+        self.Goal_pose.position.x = self.map_width - 150
+        self.Goal_pose.position.y = self.map_height - 150
 
 
         while not rospy.is_shutdown():
@@ -345,15 +386,13 @@ class RouteGenerator():
                 self.create_blank_map()
                 break
 
+        rospy.loginfo("***** start *****")
+
         while not rospy.is_shutdown():
             #self.show_img()
+            self.create_costmap()
             self.generate_path()
-
-            if self.GeneratePathFlag == True:
-                break
-
-
-        rospy.loginfo("***** finish *****")
+            self.create_blank_map()
 
 
 
