@@ -21,16 +21,16 @@ class RouteGenerator():
         self.pkg_path = rospkg.RosPack().get_path('ribbon_bridge_path_generate')
 
         #空撮画像を保存するpath
-        self.img_path = self.pkg_path + "/img/aerial_camera.png"
+        self.img_path = self.pkg_path + "/img/aerial_camera3.png"
 
         #生成したmap画像のpath
-        self.map_path = self.pkg_path + "/img/map.png"
+        self.map_path = self.pkg_path + "/img/map3.png"
 
         #map作成のために生成した白紙の画像ファイルのpath
-        self.blank_map_path = self.pkg_path + "/img/blank.png"
+        self.blank_map_path = self.pkg_path + "/img/blank3.png"
 
         #空撮画像とmap画像を合わせた画像のpath
-        self.result_path = self.pkg_path + "/img/route.png"
+        self.result_path = self.pkg_path + "/img/route3.png"
 
         #Subscribeするimgトピック名を取得
         self.img_topic_name = "/aerial_camera/camera1/image_raw"
@@ -42,11 +42,11 @@ class RouteGenerator():
         #検出した浮体の縦と横の長さを設定
         self.Boat_width = 0.0
         self.Boat_height = 0.0
-        self.Boat_diagonal = 1000#185
+        self.Boat_diagonal = 500
         self.GetBoatDiagonalFlag = False
 
         #環境内に存在する浮体の個数
-        self.Boat_num = 2
+        self.Boat_num = 3
 
         #costmapの大きさ（浮体の対角線の２倍にする）
         self.costmap = 0
@@ -58,7 +58,6 @@ class RouteGenerator():
         self.pastStart_pose = Pose()
         self.TargetRibbonBridge = RibbonBridge()
         self.RibbonBridges = RibbonBridges()
-        self.Target_pose = Pose()
         #self.OtherRibbonBridges = RibbonBridges()
 
         self.Goal_pose = Pose()
@@ -67,13 +66,11 @@ class RouteGenerator():
 
         self.sub_Result_data = rospy.Subscriber("/ribbon_bridge_measurement/result_data", RibbonBridges, self.sub_Result_data_CB)
 
-        self.sub_Target_pose = rospy.Subscriber("/ribbon_bridge_path_generate/control_ribbon_bridge_pose_1", Pose, self.sub_Target_pose_CB)
-
         self.sub_Image = rospy.Subscriber(self.img_topic_name, Image, self.sub_Image_CB)
 
-        self.pub_path = rospy.Publisher("/ribbon_bridge_path_generate/path", Path, queue_size=1)
+        self.pub_path = rospy.Publisher("/ribbon_bridge_path_generate/path3", Path, queue_size=1)
 
-        self.pub_status = rospy.Publisher("/ribbon_bridge_path_generate/status", Bool, queue_size=1)
+        self.pub_status = rospy.Publisher("/ribbon_bridge_path_generate/status3", Bool, queue_size=1)
         self.pub_status_counter = 1
 
         #flagで処理のタイミングを制御する
@@ -94,9 +91,6 @@ class RouteGenerator():
             self.GetBridgeResultFlag = True
             self.RibbonBridges = msg.RibbonBridges
 
-    def sub_Target_pose_CB(self, msg):
-        self.Target_pose = msg
-
     def create_costmap(self):
         if len(self.RibbonBridges) == 0:
             print "There are no RibbonBridges"
@@ -116,7 +110,7 @@ class RouteGenerator():
                 #pass
 
                 if len(dist_list) != self.Boat_num:
-                    #rospy.logwarn("There are only %s ribbon_bridges. We need more %s ribbon_bridges"%(str(len(dist_list)), str(self.Boat_num-len(dist_list))))
+                    rospy.logwarn("There are only %s ribbon_bridges. We need more %s ribbon_bridges"%(str(len(dist_list)), str(self.Boat_num-len(dist_list))))
                     #return False
                     pass
                 else:
@@ -129,10 +123,8 @@ class RouteGenerator():
                 else:
                     if min(dist_list) < self.Boat_diagonal:
                         target_index = dist_list.index(min(dist_list))
-
                         self.Start_pose.position.x = self.RibbonBridges[target_index].center.x
                         self.Start_pose.position.y = self.RibbonBridges[target_index].center.y
-
                         self.pastStart_pose = self.Start_pose
 
                         #浮体の対角線の長さを調べる（コストマップの円の半径に用いる)
@@ -156,7 +148,7 @@ class RouteGenerator():
                                         #targetの浮体と近すぎるものはコストマップに付与しない（誤認識なので)
                                         dist_target = math.sqrt(pow(self.TargetRibbonBridge.center.x-self.RibbonBridges[i].center.x,2)+pow(self.TargetRibbonBridge.center.y-self.RibbonBridges[i].center.y,2))
                                         if dist_target > self.Boat_diagonal:
-                                            self.add_cost(self.RibbonBridges[i].center.x, self.RibbonBridges[i].center.y, self.Boat_diagonal)
+                                            self.add_cost(self.RibbonBridges[i].center.x, self.RibbonBridges[i].center.y, self.Boat_diagonal/1.5)
 
                                 return True
                     else:
@@ -176,14 +168,14 @@ class RouteGenerator():
             cv_img = CvBridge().imgmsg_to_cv2(msg, "bgr8")
 
             # 1/10にリサイズして保存
-            new_size = (self.map_width/10, self.map_height/10)
-            #new_size = (self.map_width/5, self.map_height/5)
+            #new_size = (self.map_width/10, self.map_height/10)
+            new_size = (self.map_width/5, self.map_height/5)
 
             resize_img = cv2.resize(cv_img, new_size)
             cv2.imwrite(self.img_path, resize_img)
 
             # そのままのサイズで保存
-            cv2.imwrite(self.pkg_path + "/img/aerial_camera_.png", cv_img)
+            cv2.imwrite(self.pkg_path + "/img/aerial_camera_3.png", cv_img)
 
             self.GetImageFlag = True
 
@@ -207,28 +199,27 @@ class RouteGenerator():
         costmap = cv2.imread(self.map_path)
 
         #円形のコストマップ
-        cv2.circle(costmap, (int(centerX), int(centerY)), int(radius*1.75), (0,0,0), -1)
+        cv2.circle(costmap, (int(centerX), int(centerY)), int(radius*2), (0,0,0), -1)
 
         #四角形のコストマップ
         #cv2.rectangle(costmap, (int(centerX-radius*1.5),int(centerY-radius*1.5)), (int(centerX+radius*1.5),int(centerY+radius*1.5)), (0,0,0), -1)
 
         cv2.imwrite(self.map_path, costmap)
 
-        show_img_size = (self.map_width/10, self.map_height/10)
-        #show_img_size = (self.map_width/5, self.map_height/5)
+        #show_img_size = (self.map_width/10, self.map_height/10)
+        show_img_size = (self.map_width/5, self.map_height/5)
         show_img = cv2.resize(costmap, show_img_size)
-
-        #cv2.imshow("costmap", show_img)
+        #cv2.imshow("costmap3", show_img)
         #cv2.waitKey(1)
 
     def show_img(self):
         img = cv2.imread(self.map_path)
 
         try:
-            show_img_size = (self.map_width/10, self.map_height/10)
-            #show_img_size = (self.map_width/5, self.map_height/5)
+            #show_img_size = (self.map_width/10, self.map_height/10)
+            show_img_size = (self.map_width/5, self.map_height/5)
             show_img = cv2.resize(img, show_img_size)
-            cv2.imshow("path_image", show_img)
+            cv2.imshow("path_image3", show_img)
             cv2.waitKey(1)
         except:
             pass
@@ -279,17 +270,17 @@ class RouteGenerator():
         cv2.circle(map_color,(start[1], start[0]), 4, (0,0,255), -1)
         cv2.circle(map_color,(goal[1], goal[0]), 4, (255,0,255), -1)
 
-        show_img_size = (self.map_width/10, self.map_height/10)
-        #show_img_size = (self.map_width/5, self.map_height/5)
+        #show_img_size = (self.map_width/10, self.map_height/10)
+        show_img_size = (self.map_width/5, self.map_height/5)
         show_img = cv2.resize(map_color, show_img_size)
-        cv2.imshow("path_image", show_img)
+        cv2.imshow("path_image3", show_img)
         cv2.waitKey(1)
 
-        cv2.imwrite(self.pkg_path + "/img/path.png", map_color)
+        cv2.imwrite(self.pkg_path + "/img/path3.png", map_color)
 
     def make_result_img_x10(self, start, goal, path):
         """画像を10倍したもの"""
-        map_color = cv2.imread(self.pkg_path + "/img/aerial_camera_.png")
+        map_color = cv2.imread(self.pkg_path + "/img/aerial_camera_3.png")
         #map_color = cv2.imread(self.img_path)
         for i in range(len(path)):
             #cv2.circle(map_color,(path[i][1], path[i][0]), 1, (0,0,255), -1)
@@ -303,7 +294,7 @@ class RouteGenerator():
         cv2.circle(map_color,(start[1]*10, start[0]*10), 20, (0,0,255), -1)
         cv2.circle(map_color,(goal[1]*10, goal[0]*10), 20, (255,0,255), -1)
 
-        cv2.imwrite(self.pkg_path + "/img/path_.png", map_color)
+        cv2.imwrite(self.pkg_path + "/img/path_3.png", map_color)
 
         #show_img_size = (self.map_width/5, self.map_height/5)
         #show_img = cv2.resize(map_color, show_img_size)
@@ -326,6 +317,8 @@ class RouteGenerator():
         else:
             rospy.logwarn("***")
 
+
+
     def publish_path_msg(self, start, goal, path):
         ### 引数のpathは1/10のサイズで計測したものなので注意
         path_msg = Path()
@@ -344,10 +337,8 @@ class RouteGenerator():
 
             elif i == len(path)-1:
                 poseStamped = PoseStamped()
-                poseStamped.pose.position.x = path[i][0]*10
-                poseStamped.pose.position.y = path[i][1]*10
-                #poseStamped.pose.position.x = path[i][0]*5
-                #poseStamped.pose.position.y = path[i][1]*5
+                poseStamped.pose.position.x = path[i][0]*5
+                poseStamped.pose.position.y = path[i][1]*5
                 path_msg.poses.append(poseStamped)
 
             else:
@@ -369,10 +360,8 @@ class RouteGenerator():
 
                     if slope != previous_slope:
                         poseStamped = PoseStamped()
-                        poseStamped.pose.position.x = path[i-1][0]*10
-                        poseStamped.pose.position.y = path[i-1][1]*10
-                        #poseStamped.pose.position.x = path[i-1][0]*5
-                        #poseStamped.pose.position.y = path[i-1][1]*5
+                        poseStamped.pose.position.x = path[i-1][0]*5
+                        poseStamped.pose.position.y = path[i-1][1]*5
                         path_msg.poses.append(poseStamped)
 
                     previous_slope = slope
@@ -399,12 +388,11 @@ class RouteGenerator():
                 path_dist_low = math.sqrt(pow(_path_msg.poses[i-1].pose.position.x-_path_msg.poses[i].pose.position.x,2)+pow(_path_msg.poses[i-1].pose.position.y-_path_msg.poses[i].pose.position.y,2))
                 path_dist_up = math.sqrt(pow(_path_msg.poses[i+1].pose.position.x-_path_msg.poses[i].pose.position.x,2)+pow(_path_msg.poses[i+1].pose.position.y-_path_msg.poses[i].pose.position.y,2))
 
-                """print "path_id:[%s]"%str(i)
+                print "path_id:[%s]"%str(i)
                 print "dist_low:[%s]"%str(path_dist_low)
                 print "dist_up:[%s]"%str(path_dist_up)
                 print "Boat_diagonal:[%s]"%str(self.Boat_diagonal)
                 print "---"
-                """
 
                 if path_dist_low > self.Boat_diagonal/2 and path_dist_up > self.Boat_diagonal/2:
                     poseStamped = PoseStamped()
@@ -450,10 +438,8 @@ class RouteGenerator():
         self.GeneratePathFlag = True
 
     def generate_path(self):
-        #start_x = int(self.TargetRibbonBridge.center.x)
-        #start_y = int(self.TargetRibbonBridge.center.y)
-        start_x = int(self.Target_pose.position.x)
-        start_y = int(self.Target_pose.position.y)
+        start_x = int(self.TargetRibbonBridge.center.x)
+        start_y = int(self.TargetRibbonBridge.center.y)
 
         goal_x = int(self.Goal_pose.position.x)
         goal_y = int(self.Goal_pose.position.y)
@@ -465,16 +451,16 @@ class RouteGenerator():
 
         try:
             #1/10のサイズにして計算する
-            new_size = (self.map_width/10, self.map_height/10)
-            #new_size = (self.map_width/5, self.map_height/5)
+            #new_size = (self.map_width/10, self.map_height/10)
+            new_size = (self.map_width/5, self.map_height/5)
 
             resize_costmap = cv2.resize(costmap, new_size)
-            cv2.imwrite(self.pkg_path + "/img/resize_costmap.png", resize_costmap)
+            cv2.imwrite(self.pkg_path + "/img/resize_costmap3.png", resize_costmap)
 
-            start = (start_y/10, start_x/10)
-            goal = (goal_y/10, goal_x/10)
-            #start = (start_y/5, start_x/5)
-            #goal = (goal_y/5, goal_x/5)
+            #start = (start_y/10, start_x/10)
+            #goal = (goal_y/10, goal_x/10)
+            start = (start_y/5, start_x/5)
+            goal = (goal_y/5, goal_x/5)
             find_path = self.astar(resize_costmap, start, goal, self.distance, self.heuristic)
 
             #そのままのサイズで計算
@@ -502,12 +488,14 @@ class RouteGenerator():
 
 
     def main(self):
-        self.Goal_pose.position.x = self.map_width/2 + 500
-        self.Goal_pose.position.y = self.map_height/2 + 200
+        self.Goal_pose.position.x = self.map_width/2 + 300
+        self.Goal_pose.position.y = self.map_height/2
 
-        #画面の左上から最も近い浮体を制御対象とするための設定
-        self.pastStart_pose.position.x = 0
-        self.pastStart_pose.position.y = 0
+
+        #画面の左下から一番近い浮体を制御する
+        self.pastStart_pose.position.x = 0#self.map_width
+        self.pastStart_pose.position.y = self.map_height
+
 
         while not rospy.is_shutdown():
             #必要な情報がsubscribeされるまでストップする
@@ -531,7 +519,7 @@ class RouteGenerator():
 
 
 if __name__ == "__main__":
-    rospy.init_node("RouteGenerator", anonymous=True)
+    rospy.init_node("RouteGenerator2", anonymous=True)
     rg = RouteGenerator()
     rg.main()
     rospy.spin()

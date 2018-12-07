@@ -13,37 +13,38 @@ from ribbon_bridge_measurement.msg import *
 from matplotlib import pyplot as plt
 from nav_msgs.msg import *
 
-class MoveAlongPath():
+class PathMoving():
     def __init__(self):
         self.Model_name = "tug_boat"
         self.Reference_frame = "world"
 
-        self.Model_pose = Pose()
-        self.pastModel_pose = Pose()
-        self.Model_corners = [(0,0),(0,0),(0,0),(0,0)]
-        self.Boat_diagonal = 1000
-        self.GetBoatDiagonalFlag = False
-
-        self.Boat_num = 0 #YOLOで認識した浮体の数
         self.Path_status = False #Pathの生成が上手くできていればTrue
 
         self.Goal_pose = Pose()
+        self.Model_pose = Pose()
+
         self.True_Model_state = ModelState() #浮体の位置の真値
 
         self.Path = Path()
         self.GetPathFlag = False
 
         self.Duration_time = 0.01 #一回の操作で浮体に力を与える時間
-        self.Arrival_distance = 10 #この値より小さくなれば到着したと判定する(小さすぎると止まるタイミングを見失う)
+        self.Arrival_distance = 5 #この値より小さくなれば到着したと判定する(小さすぎると止まるタイミングを見失う)
         self.NotArrival_distance = self.Arrival_distance + 1.0
 
         self.ArrivedFlag_X = False
         self.ArrivedFlag_Y = False
         self.ArrivedFlag_Z = False
 
-        self.sub_Goal_pose = rospy.Subscriber("/ribbon_bridge_path_generate/goal_pose", Pose, self.sub_Goal_pose_CB)
+        #浮体のPose
+        self.RibbonBridgePose_1 = Pose() #制御対象
+        self.RibbonBridgePose_2 = Pose() #障害物
+        #self.RibbonBridgePose_3 = Pose() #障害物
 
-        self.sub_Model_pose = rospy.Subscriber("/ribbon_bridge_measurement/result_data", RibbonBridges, self.sub_Model_pose_CB)
+        #それぞれの浮体の位置をsubscribeする
+        self.sub_RibbonBridgePose_1 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_1", Pose, self.sub_RibbonBridgePose_1_CB)
+        self.sub_RibbonBridgePose_2 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_2", Pose, self.sub_RibbonBridgePose_2_CB)
+        #self.sub_RibbonBridgePose_3 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_3", Pose, self.sub_RibbonBridgePose_3_CB)
 
         self.sub_True_Model_pose = rospy.Subscriber("/gazebo/model_states", ModelStates, self.sub_True_Model_pose_CB)
 
@@ -56,10 +57,6 @@ class MoveAlongPath():
         self.pub_Model_pose = rospy.Publisher("/gazebo/set_model_state", ModelState, queue_size=1)
         #self.pub_Model_pose = rospy.Publisher("/gazebo/set_link_state", LinkState, queue_size=1)
 
-        #制御している浮体の位置をpubするデバッグ用
-        self.pub_Target_pose = rospy.Publisher("/ribbon_bridge_path_generate/control_ribbon_bridge_pose_1", Pose, queue_size=1)
-
-
         #PID制御用のパラメータ
         self.DistX_1 = 0.0
         self.DistY_1 = 0.0
@@ -70,7 +67,7 @@ class MoveAlongPath():
         self.Fx = 0.0
         self.Fy = 0.0
         self.Fz = 0.0
-        self.Kp = 0.5
+        self.Kp = 0.1
         self.Ki = 0.0
         self.Kd = 0.0
         self.count = 1
@@ -93,6 +90,43 @@ class MoveAlongPath():
         else:
             self.Path = msg
             self.GetPathFlag = True
+
+    def sub_RibbonBridgePose_1_CB(self, msg):
+        self.RibbonBridgePose_1 = msg
+        self.Model_pose = msg
+
+        #到着判定
+        if self.ArrivedFlag_X == False:
+            #if round(self.Model_pose.position.x,2) == self.Goal_pose.position.x:
+            if abs(self.Model_pose.position.x - self.Goal_pose.position.x) < self.Arrival_distance:
+                self.stop_ribbon_bridge("x")
+                self.ArrivedFlag_X = True
+                #rospy.loginfo("Arrived X")
+
+        else: #self.ArrivedFlag_X == True:
+            #if round(self.Model_pose.position.x,2) != self.Goal_pose.position.x:
+            if abs(self.Model_pose.position.x - self.Goal_pose.position.x) >= self.NotArrival_distance:
+                self.ArrivedFlag_X = False
+
+        if self.ArrivedFlag_Y == False:
+            #if round(self.Model_pose.position.y,2) == self.Goal_pose.position.y:
+            if abs(self.Model_pose.position.y - self.Goal_pose.position.y) < self.Arrival_distance:
+                self.stop_ribbon_bridge("y")
+                self.ArrivedFlag_Y = True
+                #rospy.loginfo("Arrived Y")
+
+        else: #self.ArrivedFlag_Y == True:
+            #if round(self.Model_pose.position.y,2) != self.Goal_pose.position.y:
+            if abs(self.Model_pose.position.y - self.Goal_pose.position.y) >= self.NotArrival_distance:
+                self.ArrivedFlag_Y = False
+
+
+
+    def sub_RibbonBridgePose_2_CB(self, msg):
+        self.RibbonBridgePose_2 = msg
+
+    def sub_RibbonBridgePose_3_CB(self, msg):
+        self.RibbonBridgePose_3 = msg
 
     def stop_ribbon_bridge(self, way):
         """ wayの向きにかかるforceを0にする→ブレーキをかける """
@@ -163,71 +197,6 @@ class MoveAlongPath():
         self.True_Model_state.model_name = msg.name[i]
         self.True_Model_state.pose = msg.pose[i]
         self.True_Model_state.twist = msg.twist[i]
-
-    def sub_Model_pose_CB(self, msg):
-        """ 指定した浮体の位置をsubscribeする、Goalに到着したらブレーキをかける """
-        i = 0
-
-        if len(msg.RibbonBridges) == 0:
-            print "There are no RibbonBridges"
-
-        else:
-            dist_list = []
-            for i in range(len(msg.RibbonBridges)):
-                dist = math.sqrt(pow(self.pastModel_pose.position.x-msg.RibbonBridges[i].center.x,2)+pow(self.pastModel_pose.position.y-msg.RibbonBridges[i].center.y,2))
-
-                #if dist < self.Boat_diagonal:
-                dist_list.append(dist)
-
-            if len(dist_list) == 0:#条件を満たす浮体がいない場合
-                #self.stop_ribbon_bridge("x")
-                #self.stop_ribbon_bridge("y")
-                #self.stop_ribbon_bridge("z")
-                rospy.logwarn("RibbonBridge LOST")
-
-            else:
-                target_index = dist_list.index(min(dist_list))
-                self.Model_pose.position.x = msg.RibbonBridges[target_index].center.x
-                self.Model_pose.position.y = msg.RibbonBridges[target_index].center.y
-                self.pastModel_pose = self.Model_pose
-
-                self.pub_Target_pose.publish(self.Model_pose)
-
-                diagonal = pow((msg.RibbonBridges[target_index].corners[0].x-msg.RibbonBridges[target_index].corners[2].x),2) + pow((msg.RibbonBridges[target_index].corners[0].y-msg.RibbonBridges[target_index].corners[2].y),2)
-
-                if math.sqrt(diagonal) > self.Boat_diagonal: #誤検出回避
-                    pass
-                else:
-                    self.Boat_diagonal = math.sqrt(diagonal)
-                    self.GetBoatDiagonalFlag = True
-
-                    self.pub_Target_pose.publish(self.Model_pose)
-
-                    if self.ArrivedFlag_X == False:
-                        #if round(self.Model_pose.position.x,2) == self.Goal_pose.position.x:
-                        if abs(self.Model_pose.position.x - self.Goal_pose.position.x) < self.Arrival_distance:
-                            self.stop_ribbon_bridge("x")
-                            self.ArrivedFlag_X = True
-                            #rospy.loginfo("Arrived X")
-
-                    else: #self.ArrivedFlag_X == True:
-                        #if round(self.Model_pose.position.x,2) != self.Goal_pose.position.x:
-                        if abs(self.Model_pose.position.x - self.Goal_pose.position.x) >= self.NotArrival_distance:
-                            self.ArrivedFlag_X = False
-
-                    if self.ArrivedFlag_Y == False:
-                        #if round(self.Model_pose.position.y,2) == self.Goal_pose.position.y:
-                        if abs(self.Model_pose.position.y - self.Goal_pose.position.y) < self.Arrival_distance:
-                            self.stop_ribbon_bridge("y")
-                            self.ArrivedFlag_Y = True
-                            #rospy.loginfo("Arrived Y")
-
-                    else: #self.ArrivedFlag_Y == True:
-                        #if round(self.Model_pose.position.y,2) != self.Goal_pose.position.y:
-                        if abs(self.Model_pose.position.y - self.Goal_pose.position.y) >= self.NotArrival_distance:
-                            self.ArrivedFlag_Y = False
-
-
 
     def euler_to_quaternion(self, euler):
         q = tf.transformations.quaternion_from_euler(euler.x, euler.y, euler.z)
@@ -302,16 +271,6 @@ class MoveAlongPath():
                 rospy.loginfo("***** Start *****")
                 break
 
-        i = 1
-        #for i in range(len(self.Path.poses)):
-        #while not rospy.is_shutdown():
-            #rospy.sleep(1)
-            #if i == len(self.Path.poses):
-                #break
-
-        self.pastModel_pose.position.x = 0
-        self.pastModel_pose.position.y = 0
-
         next_goal_flag = False
 
         while not rospy.is_shutdown():
@@ -357,6 +316,7 @@ class MoveAlongPath():
 
         self.Goal_pose.position.x = self.Path.poses[len(self.Path.poses)-1].pose.position.y
         self.Goal_pose.position.y = self.Path.poses[len(self.Path.poses)-1].pose.position.x
+
         #goalでstay
         while not rospy.is_shutdown():
             self.move()
@@ -369,7 +329,7 @@ class MoveAlongPath():
 
 
 if __name__ == "__main__":
-    rospy.init_node("MoveAlongPath", anonymous=True)
-    c = MoveAlongPath()
+    rospy.init_node("PathMoving", anonymous=True)
+    c = PathMoving()
     c.main()
     rospy.spin()

@@ -15,17 +15,20 @@ from nav_msgs.msg import *
 
 class MoveAlongPath():
     def __init__(self):
-        self.Model_name = "tug_boat"
+        self.Model_name = "tug_boat_0"
         self.Reference_frame = "world"
 
         self.Model_pose = Pose()
         self.pastModel_pose = Pose()
         self.Model_corners = [(0,0),(0,0),(0,0),(0,0)]
         self.Boat_diagonal = 1000
-        self.GetBoatDiagonalFlag = False
 
         self.Boat_num = 0 #YOLOで認識した浮体の数
         self.Path_status = False #Pathの生成が上手くできていればTrue
+
+        #画像のサイズ
+        self.map_width = 1600#4096
+        self.map_height = 900#2160
 
         self.Goal_pose = Pose()
         self.True_Model_state = ModelState() #浮体の位置の真値
@@ -34,7 +37,7 @@ class MoveAlongPath():
         self.GetPathFlag = False
 
         self.Duration_time = 0.01 #一回の操作で浮体に力を与える時間
-        self.Arrival_distance = 10 #この値より小さくなれば到着したと判定する(小さすぎると止まるタイミングを見失う)
+        self.Arrival_distance = 3 #この値より小さくなれば到着したと判定する(小さすぎると止まるタイミングを見失う)
         self.NotArrival_distance = self.Arrival_distance + 1.0
 
         self.ArrivedFlag_X = False
@@ -47,17 +50,17 @@ class MoveAlongPath():
 
         self.sub_True_Model_pose = rospy.Subscriber("/gazebo/model_states", ModelStates, self.sub_True_Model_pose_CB)
 
-        self.sub_Path = rospy.Subscriber("ribbon_bridge_path_generate/path", Path, self.sub_Path_CB)
+        self.sub_Path = rospy.Subscriber("ribbon_bridge_path_generate/path2", Path, self.sub_Path_CB)
 
         self.sub_Boat_num = rospy.Subscriber("/darknet_ros/found_object", Int8, self.sub_Boat_num_CB) #YOLOのノードとの接続を確認するために作成
 
-        self.sub_Path_status = rospy.Subscriber("/ribbon_bridge_path_generate/status", Bool, self.sub_Path_status_CB)
+        self.sub_Path_status = rospy.Subscriber("/ribbon_bridge_path_generate/status2", Bool, self.sub_Path_status_CB)
 
         self.pub_Model_pose = rospy.Publisher("/gazebo/set_model_state", ModelState, queue_size=1)
         #self.pub_Model_pose = rospy.Publisher("/gazebo/set_link_state", LinkState, queue_size=1)
 
         #制御している浮体の位置をpubするデバッグ用
-        self.pub_Target_pose = rospy.Publisher("/ribbon_bridge_path_generate/control_ribbon_bridge_pose_1", Pose, queue_size=1)
+        self.pub_Target_pose = rospy.Publisher("/ribbon_bridge_path_generate/control_ribbon_bridge_pose_2", Pose, queue_size=1)
 
 
         #PID制御用のパラメータ
@@ -70,7 +73,7 @@ class MoveAlongPath():
         self.Fx = 0.0
         self.Fy = 0.0
         self.Fz = 0.0
-        self.Kp = 0.5
+        self.Kp = 0.1
         self.Ki = 0.0
         self.Kd = 0.0
         self.count = 1
@@ -96,7 +99,6 @@ class MoveAlongPath():
 
     def stop_ribbon_bridge(self, way):
         """ wayの向きにかかるforceを0にする→ブレーキをかける """
-        """### Pub版
         pub_msg = ModelState()
         pub_msg.model_name = self.Model_name
 
@@ -124,10 +126,9 @@ class MoveAlongPath():
             pass
 
         else:
-            rospy.logerr("Invailed argument [%s]"%str(way))"""
+            rospy.logerr("Invailed argument [%s]"%str(way))
 
-        ### Srv版
-        set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
+        """set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
 
         model_state_srv = ModelState()
 
@@ -137,10 +138,10 @@ class MoveAlongPath():
         model_state_srv.twist = self.True_Model_state.twist
 
         if way == "x":
-            model_state_srv.twist.linear.x = 0.000
+            model_state_srv.twist.linear.y = 0.000
 
         elif way == "y":
-            model_state_srv.twist.linear.y = 0.000
+            model_state_srv.twist.linear.x = 0.000
 
         elif way == "z":
             pass
@@ -155,7 +156,7 @@ class MoveAlongPath():
 
         except rospy.ServiceException as e:
             rospy.logerr("Service[/gazebo/set_model_state] Exception")
-            rospy.sleep(5)
+            rospy.sleep(5)"""
 
     def sub_True_Model_pose_CB(self, msg):
         """ gazebo空間における浮体の位置の真値を取得する """
@@ -201,8 +202,6 @@ class MoveAlongPath():
                     self.Boat_diagonal = math.sqrt(diagonal)
                     self.GetBoatDiagonalFlag = True
 
-                    self.pub_Target_pose.publish(self.Model_pose)
-
                     if self.ArrivedFlag_X == False:
                         #if round(self.Model_pose.position.x,2) == self.Goal_pose.position.x:
                         if abs(self.Model_pose.position.x - self.Goal_pose.position.x) < self.Arrival_distance:
@@ -226,8 +225,6 @@ class MoveAlongPath():
                         #if round(self.Model_pose.position.y,2) != self.Goal_pose.position.y:
                         if abs(self.Model_pose.position.y - self.Goal_pose.position.y) >= self.NotArrival_distance:
                             self.ArrivedFlag_Y = False
-
-
 
     def euler_to_quaternion(self, euler):
         q = tf.transformations.quaternion_from_euler(euler.x, euler.y, euler.z)
@@ -276,7 +273,6 @@ class MoveAlongPath():
             print "position_distance:x[%s], y[%s]"%(str(round(dist_x, 2)), str(round(dist_y, 2)))
             print "---"
 
-
             fx = self.Fx + self.Kp * (dist_x-self.DistX_1) + self.Ki * dist_x + self.Kd * ((dist_x-self.DistX_1)-(self.DistX_1-self.DistX_2))
             fy = self.Fy + self.Kp * (dist_y-self.DistY_1) + self.Ki * dist_y + self.Kd * ((dist_y-self.DistY_1)-(self.DistY_1-self.DistY_2))
 
@@ -302,6 +298,10 @@ class MoveAlongPath():
                 rospy.loginfo("***** Start *****")
                 break
 
+        #画面の左端中央ら最も近い浮体を制御対象とするための設定
+        self.pastModel_pose.position.x = 0
+        self.pastModel_pose.position.y = self.map_height
+
         i = 1
         #for i in range(len(self.Path.poses)):
         #while not rospy.is_shutdown():
@@ -309,12 +309,10 @@ class MoveAlongPath():
             #if i == len(self.Path.poses):
                 #break
 
-        self.pastModel_pose.position.x = 0
-        self.pastModel_pose.position.y = 0
-
         next_goal_flag = False
 
         while not rospy.is_shutdown():
+            #print "next_goal_flag:[%s]"%str(next_goal_flag)
             if len(self.Path.poses) <= 2:
                 break
 

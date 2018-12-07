@@ -16,7 +16,7 @@ from nav_msgs.msg import *
 from std_msgs.msg import Bool
 
 
-class RouteGenerator():
+class PathPlanning():
     def __init__(self):
         self.pkg_path = rospkg.RosPack().get_path('ribbon_bridge_path_generate')
 
@@ -39,35 +39,22 @@ class RouteGenerator():
         self.map_width = 1600#4096
         self.map_height = 900#2160
 
-        #検出した浮体の縦と横の長さを設定
-        self.Boat_width = 0.0
-        self.Boat_height = 0.0
-        self.Boat_diagonal = 1000#185
-        self.GetBoatDiagonalFlag = False
+        self.Goal_pose = Pose() #目的地
 
-        #環境内に存在する浮体の個数
-        self.Boat_num = 2
+        self.Boat_diagonal = 200 #75m上空から撮影した時の浮体のサイズ
+        self.Costmap_size = 300
 
-        #costmapの大きさ（浮体の対角線の２倍にする）
-        self.costmap = 0
+        #浮体のPose
+        self.RibbonBridgePose_1 = Pose() #制御対象
+        self.RibbonBridgePose_2 = Pose() #障害物
+        #self.RibbonBridgePose_3 = Pose() #障害物
 
-        #複数の浮体の中で何番目を制御対象にするかを指定する
-        self.target_model_index = 0
-
-        self.Start_pose = Pose()
-        self.pastStart_pose = Pose()
-        self.TargetRibbonBridge = RibbonBridge()
-        self.RibbonBridges = RibbonBridges()
-        self.Target_pose = Pose()
-        #self.OtherRibbonBridges = RibbonBridges()
-
-        self.Goal_pose = Pose()
+        #それぞれの浮体の位置をsubscribeする
+        self.sub_RibbonBridgePose_1 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_1", Pose, self.sub_RibbonBridgePose_1_CB)
+        self.sub_RibbonBridgePose_2 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_2", Pose, self.sub_RibbonBridgePose_2_CB)
+        #self.sub_RibbonBridgePose_3 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_3", Pose, self.sub_RibbonBridgePose_3_CB)
 
         self.sub_Goal_pose = rospy.Subscriber("/ribbon_bridge_path_generate/goal_position", Pose, self.sub_Goal_pose_CB)
-
-        self.sub_Result_data = rospy.Subscriber("/ribbon_bridge_measurement/result_data", RibbonBridges, self.sub_Result_data_CB)
-
-        self.sub_Target_pose = rospy.Subscriber("/ribbon_bridge_path_generate/control_ribbon_bridge_pose_1", Pose, self.sub_Target_pose_CB)
 
         self.sub_Image = rospy.Subscriber(self.img_topic_name, Image, self.sub_Image_CB)
 
@@ -85,87 +72,26 @@ class RouteGenerator():
     def sub_Goal_pose_CB(self, msg):
         self.Goal_pose = msg
 
-    def sub_Result_data_CB(self, msg):
-        #rospy.loginfo("Subscribed result_data")
-        if len(msg.RibbonBridges) == 0:
-            print "There are no RibbonBridges"
+    def sub_RibbonBridgePose_1_CB(self, msg):
+        self.RibbonBridgePose_1 = msg
 
-        else:
-            self.GetBridgeResultFlag = True
-            self.RibbonBridges = msg.RibbonBridges
+    def sub_RibbonBridgePose_2_CB(self, msg):
+        self.RibbonBridgePose_2 = msg
 
-    def sub_Target_pose_CB(self, msg):
-        self.Target_pose = msg
+    def sub_RibbonBridgePose_3_CB(self, msg):
+        self.RibbonBridgePose_3 = msg
 
     def create_costmap(self):
-        if len(self.RibbonBridges) == 0:
-            print "There are no RibbonBridges"
+        try:
+            if self.CreatedBlankImageFlag == True:
+                #障害物の浮体の位置をコストマップに追加する
+                self.add_cost(self.RibbonBridgePose_2.position.x, self.RibbonBridgePose_2.position.y, self.Costmap_size)
+                #self.add_cost(self.RibbonBridgePose_3.position.x, self.RibbonBridge_3.position.y, self.Boat_diagonal)
+                return True
+
+        except:
+            rospy.logerr("Failed to create_costmap")
             return False
-
-        else:
-            #トラッキング処理(暫定版)
-            try:
-                dist_list = []
-                for i in range(len(self.RibbonBridges)):
-                    dist = math.sqrt(pow(self.pastStart_pose.position.x-self.RibbonBridges[i].center.x,2)+pow(self.pastStart_pose.position.y-self.RibbonBridges[i].center.y,2))
-
-                    dist_list.append(dist)
-
-            #except:
-                #rospy.logerr("Index error")
-                #pass
-
-                if len(dist_list) != self.Boat_num:
-                    #rospy.logwarn("There are only %s ribbon_bridges. We need more %s ribbon_bridges"%(str(len(dist_list)), str(self.Boat_num-len(dist_list))))
-                    #return False
-                    pass
-                else:
-                    pass
-
-                if len(dist_list) == 0:#条件を満たす浮体がいない場合
-                    rospy.logwarn("Lost Target RibbonBridge")
-                    return False
-
-                else:
-                    if min(dist_list) < self.Boat_diagonal:
-                        target_index = dist_list.index(min(dist_list))
-
-                        self.Start_pose.position.x = self.RibbonBridges[target_index].center.x
-                        self.Start_pose.position.y = self.RibbonBridges[target_index].center.y
-
-                        self.pastStart_pose = self.Start_pose
-
-                        #浮体の対角線の長さを調べる（コストマップの円の半径に用いる)
-                        diagonal = pow((self.RibbonBridges[target_index].corners[0].x-self.RibbonBridges[target_index].corners[2].x),2) + pow((self.RibbonBridges[target_index].corners[0].y-self.RibbonBridges[target_index].corners[2].y),2)
-
-                        if math.sqrt(diagonal) > 200: #誤検出回避
-                            #rospy.logwarn("this ribbon bridge is too large")
-                            pass
-                        else:
-                            self.Boat_diagonal = math.sqrt(diagonal)
-                            self.GetBoatDiagonalFlag = True
-
-                            if self.CreatedBlankImageFlag == True:
-                                #try:
-                                self.TargetRibbonBridge = self.RibbonBridges[target_index]
-
-                                for i in range(len(self.RibbonBridges)):
-                                    if i == target_index:
-                                        pass
-                                    else:
-                                        #targetの浮体と近すぎるものはコストマップに付与しない（誤認識なので)
-                                        dist_target = math.sqrt(pow(self.TargetRibbonBridge.center.x-self.RibbonBridges[i].center.x,2)+pow(self.TargetRibbonBridge.center.y-self.RibbonBridges[i].center.y,2))
-                                        if dist_target > self.Boat_diagonal:
-                                            self.add_cost(self.RibbonBridges[i].center.x, self.RibbonBridges[i].center.y, self.Boat_diagonal)
-
-                                return True
-                    else:
-                        rospy.logwarn("The nearest RibbonBridge is Lost")
-                        return False
-
-            except:
-                #rospy.logerr("The index:[%s] is OUT of LENGTH of [/ribbon_bridge_measurement/result_data]"%str(target_index))
-                return False
 
     def sub_Image_CB(self, msg):
         try:
@@ -207,10 +133,10 @@ class RouteGenerator():
         costmap = cv2.imread(self.map_path)
 
         #円形のコストマップ
-        cv2.circle(costmap, (int(centerX), int(centerY)), int(radius*1.75), (0,0,0), -1)
+        #cv2.circle(costmap, (int(centerX), int(centerY)), int(radius*1.75), (0,0,0), -1)
 
         #四角形のコストマップ
-        #cv2.rectangle(costmap, (int(centerX-radius*1.5),int(centerY-radius*1.5)), (int(centerX+radius*1.5),int(centerY+radius*1.5)), (0,0,0), -1)
+        cv2.rectangle(costmap, (int(centerX-radius*1.5),int(centerY-radius*1.5)), (int(centerX+radius*1.5),int(centerY+radius*1.5)), (0,0,0), -1)
 
         cv2.imwrite(self.map_path, costmap)
 
@@ -450,10 +376,8 @@ class RouteGenerator():
         self.GeneratePathFlag = True
 
     def generate_path(self):
-        #start_x = int(self.TargetRibbonBridge.center.x)
-        #start_y = int(self.TargetRibbonBridge.center.y)
-        start_x = int(self.Target_pose.position.x)
-        start_y = int(self.Target_pose.position.y)
+        start_x = int(self.RibbonBridgePose_1.position.x)
+        start_y = int(self.RibbonBridgePose_1.position.y)
 
         goal_x = int(self.Goal_pose.position.x)
         goal_y = int(self.Goal_pose.position.y)
@@ -482,7 +406,7 @@ class RouteGenerator():
 
 
             if find_path != None:
-                rospy.loginfo("RouteGenerator -> Found Path ")
+                rospy.loginfo("PathPlanning -> Found Path ")
 
                 self.publish_path_msg(start, goal, find_path)
                 self.publish_path_status(True)
@@ -491,12 +415,12 @@ class RouteGenerator():
                 #self.make_result_img_x10(start, goal, find_path)
 
             else:
-                rospy.logwarn("RouteGenerator -> Can not Find Path ")
+                rospy.logwarn("PathPlanning -> Can not Find Path ")
                 #self.publish_path_status(False)
                 pass
 
         except:
-            rospy.logerr("RouteGenerator -> Error ")
+            rospy.logerr("PathPlanning -> Error ")
             self.publish_path_status(False)
             pass
 
@@ -505,20 +429,15 @@ class RouteGenerator():
         self.Goal_pose.position.x = self.map_width/2 + 500
         self.Goal_pose.position.y = self.map_height/2 + 200
 
-        #画面の左上から最も近い浮体を制御対象とするための設定
-        self.pastStart_pose.position.x = 0
-        self.pastStart_pose.position.y = 0
-
         while not rospy.is_shutdown():
             #必要な情報がsubscribeされるまでストップする
-            if self.GetImageFlag == True and self.GetBridgeResultFlag == True:
+            if self.GetImageFlag == True:
                 self.create_blank_map()
                 break
 
         rospy.loginfo("***** start *****")
 
         while not rospy.is_shutdown():
-            #self.show_img()
             _cost_map = self.create_costmap()
             if _cost_map == True:
                 _path = self.generate_path()
@@ -527,11 +446,8 @@ class RouteGenerator():
                 pass
 
 
-
-
-
 if __name__ == "__main__":
-    rospy.init_node("RouteGenerator", anonymous=True)
-    rg = RouteGenerator()
-    rg.main()
+    rospy.init_node("PathPlanning", anonymous=True)
+    pp= PathPlanning()
+    pp.main()
     rospy.spin()
