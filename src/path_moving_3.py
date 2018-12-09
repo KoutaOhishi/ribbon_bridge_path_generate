@@ -15,7 +15,7 @@ from nav_msgs.msg import *
 
 class PathMoving():
     def __init__(self):
-        self.Model_name = "tug_boat_0"
+        self.Model_name = "tug_boat_1"
         self.Reference_frame = "world"
 
         self.Path_status = False #Pathの生成が上手くできていればTrue
@@ -48,11 +48,11 @@ class PathMoving():
 
         self.sub_True_Model_pose = rospy.Subscriber("/gazebo/model_states", ModelStates, self.sub_True_Model_pose_CB)
 
-        self.sub_Path = rospy.Subscriber("ribbon_bridge_path_generate/path2", Path, self.sub_Path_CB)
+        self.sub_Path = rospy.Subscriber("ribbon_bridge_path_generate/path3", Path, self.sub_Path_CB)
 
         self.sub_Boat_num = rospy.Subscriber("/darknet_ros/found_object", Int8, self.sub_Boat_num_CB) #YOLOのノードとの接続を確認するために作成
 
-        self.sub_Path_status = rospy.Subscriber("/ribbon_bridge_path_generate/status2", Bool, self.sub_Path_status_CB)
+        self.sub_Path_status = rospy.Subscriber("/ribbon_bridge_path_generate/status3", Bool, self.sub_Path_status_CB)
 
         self.pub_Model_pose = rospy.Publisher("/gazebo/set_model_state", ModelState, queue_size=1)
         #self.pub_Model_pose = rospy.Publisher("/gazebo/set_link_state", LinkState, queue_size=1)
@@ -91,8 +91,8 @@ class PathMoving():
             self.Path = msg
             self.GetPathFlag = True
 
-    def sub_RibbonBridgePose_2_CB(self, msg):
-        self.RibbonBridgePose_2 = msg
+    def sub_RibbonBridgePose_3_CB(self, msg):
+        self.RibbonBridgePose_3 = msg
         self.Model_pose = msg
 
         #到着判定
@@ -125,8 +125,8 @@ class PathMoving():
     def sub_RibbonBridgePose_1_CB(self, msg):
         self.RibbonBridgePose_1 = msg
 
-    def sub_RibbonBridgePose_3_CB(self, msg):
-        self.RibbonBridgePose_3 = msg
+    def sub_RibbonBridgePose_2_CB(self, msg):
+        self.RibbonBridgePose_2 = msg
 
     def stop_ribbon_bridge(self, way):
         """ wayの向きにかかるforceを0にする→ブレーキをかける """

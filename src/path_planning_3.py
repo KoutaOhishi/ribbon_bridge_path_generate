@@ -21,16 +21,16 @@ class PathPlanning():
         self.pkg_path = rospkg.RosPack().get_path('ribbon_bridge_path_generate')
 
         #空撮画像を保存するpath
-        self.img_path = self.pkg_path + "/img/aerial_camera2.png"
+        self.img_path = self.pkg_path + "/img/aerial_camera3.png"
 
         #生成したmap画像のpath
-        self.map_path = self.pkg_path + "/img/map2.png"
+        self.map_path = self.pkg_path + "/img/map3.png"
 
         #map作成のために生成した白紙の画像ファイルのpath
-        self.blank_map_path = self.pkg_path + "/img/blank2.png"
+        self.blank_map_path = self.pkg_path + "/img/blank3.png"
 
         #空撮画像とmap画像を合わせた画像のpath
-        self.result_path = self.pkg_path + "/img/route2.png"
+        self.result_path = self.pkg_path + "/img/route3.png"
 
         #Subscribeするimgトピック名を取得
         self.img_topic_name = "/aerial_camera/camera1/image_raw"
@@ -47,7 +47,7 @@ class PathPlanning():
         #浮体のPose
         self.RibbonBridgePose_1 = Pose() #障害物
         self.RibbonBridgePose_2 = Pose() #制御対象
-        #self.RibbonBridgePose_3 = Pose() #障害物
+        self.RibbonBridgePose_3 = Pose() #障害物
 
         #それぞれの浮体の位置をsubscribeする
         self.sub_RibbonBridgePose_1 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_1", Pose, self.sub_RibbonBridgePose_1_CB)
@@ -58,9 +58,9 @@ class PathPlanning():
 
         self.sub_Image = rospy.Subscriber(self.img_topic_name, Image, self.sub_Image_CB)
 
-        self.pub_path = rospy.Publisher("/ribbon_bridge_path_generate/path2", Path, queue_size=1)
+        self.pub_path = rospy.Publisher("/ribbon_bridge_path_generate/path3", Path, queue_size=1)
 
-        self.pub_status = rospy.Publisher("/ribbon_bridge_path_generate/status2", Bool, queue_size=1)
+        self.pub_status = rospy.Publisher("/ribbon_bridge_path_generate/status3", Bool, queue_size=1)
         self.pub_status_counter = 1
 
         #flagで処理のタイミングを制御する
@@ -86,7 +86,7 @@ class PathPlanning():
             if self.CreatedBlankImageFlag == True:
                 #障害物の浮体の位置をコストマップに追加する
                 self.add_cost(self.RibbonBridgePose_1.position.x, self.RibbonBridgePose_1.position.y, self.Costmap_size)
-                self.add_cost(self.RibbonBridgePose_3.position.x, self.RibbonBridgePose_3.position.y, self.Costmap_size)
+                self.add_cost(self.RibbonBridgePose_2.position.x, self.RibbonBridgePose_2.position.y, self.Costmap_size)
                 return True
 
         except:
@@ -109,7 +109,7 @@ class PathPlanning():
             cv2.imwrite(self.img_path, resize_img)
 
             # そのままのサイズで保存
-            cv2.imwrite(self.pkg_path + "/img/aerial_camera_2.png", cv_img)
+            cv2.imwrite(self.pkg_path + "/img/aerial_camera_3.png", cv_img)
 
             self.GetImageFlag = True
 
@@ -154,7 +154,7 @@ class PathPlanning():
             show_img_size = (self.map_width/10, self.map_height/10)
             #show_img_size = (self.map_width/5, self.map_height/5)
             show_img = cv2.resize(img, show_img_size)
-            cv2.imshow("path_image2", show_img)
+            cv2.imshow("path_image3", show_img)
             cv2.waitKey(1)
         except:
             pass
@@ -208,14 +208,14 @@ class PathPlanning():
         show_img_size = (self.map_width/10, self.map_height/10)
         #show_img_size = (self.map_width/5, self.map_height/5)
         show_img = cv2.resize(map_color, show_img_size)
-        cv2.imshow("path_image2", show_img)
+        cv2.imshow("path_image3", show_img)
         cv2.waitKey(1)
 
-        cv2.imwrite(self.pkg_path + "/img/path2.png", map_color)
+        cv2.imwrite(self.pkg_path + "/img/path3.png", map_color)
 
     def make_result_img_x10(self, start, goal, path):
         """画像を10倍したもの"""
-        map_color = cv2.imread(self.pkg_path + "/img/aerial_camera_2.png")
+        map_color = cv2.imread(self.pkg_path + "/img/aerial_camera_3.png")
         #map_color = cv2.imread(self.img_path)
         for i in range(len(path)):
             #cv2.circle(map_color,(path[i][1], path[i][0]), 1, (0,0,255), -1)
@@ -229,7 +229,7 @@ class PathPlanning():
         cv2.circle(map_color,(start[1]*10, start[0]*10), 20, (0,0,255), -1)
         cv2.circle(map_color,(goal[1]*10, goal[0]*10), 20, (255,0,255), -1)
 
-        cv2.imwrite(self.pkg_path + "/img/path_2.png", map_color)
+        cv2.imwrite(self.pkg_path + "/img/path_3.png", map_color)
 
         #show_img_size = (self.map_width/5, self.map_height/5)
         #show_img = cv2.resize(map_color, show_img_size)
@@ -376,8 +376,8 @@ class PathPlanning():
         self.GeneratePathFlag = True
 
     def generate_path(self):
-        start_x = int(self.RibbonBridgePose_2.position.x)
-        start_y = int(self.RibbonBridgePose_2.position.y)
+        start_x = int(self.RibbonBridgePose_3.position.x)
+        start_y = int(self.RibbonBridgePose_3.position.y)
 
         goal_x = int(self.Goal_pose.position.x)
         goal_y = int(self.Goal_pose.position.y)
@@ -393,7 +393,7 @@ class PathPlanning():
             #new_size = (self.map_width/5, self.map_height/5)
 
             resize_costmap = cv2.resize(costmap, new_size)
-            cv2.imwrite(self.pkg_path + "/img/resize_costmap2.png", resize_costmap)
+            cv2.imwrite(self.pkg_path + "/img/resize_costmap3.png", resize_costmap)
 
             start = (start_y/10, start_x/10)
             goal = (goal_y/10, goal_x/10)
@@ -427,7 +427,7 @@ class PathPlanning():
 
 
     def main(self):
-        self.Goal_pose.position.x = self.map_width/2 - 300
+        self.Goal_pose.position.x = self.map_width/2
         self.Goal_pose.position.y = self.map_height/2
 
 

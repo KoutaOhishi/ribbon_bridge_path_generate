@@ -13,41 +13,102 @@ from std_msgs.msg import Int8
 
 from ribbon_bridge_measurement.msg import *
 
-ribbon_bridge_1 = Pose()
-ribbon_bridge_2 = Pose()
-ribbon_bridge_3 = Pose()
+RibbonBridgePose_1 = Pose()
+RibbonBridgePose_2 = Pose()
+RibbonBridgePose_3 = Pose()
 
-def CB1(msg):
-    global ribbon_bridge_1
-    ribbon_bridge_1 = msg
+RibbonBridgePath_1 = Path()
+RibbonBridgePath_2 = Path()
+RibbonBridgePath_3 = Path()
 
-def CB2(msg):
-    global ribbon_bridge_2
-    ribbon_bridge_2 = msg
+def sub_RibbonBridgePose_1_CB(msg):
+    global RibbonBridgePose_1
+    RibbonBridgePose_1 = msg
 
-def CB3(msg):
-    global ribbon_bridge_3
-    ribbon_bridge_3 = msg
+def sub_RibbonBridgePose_2_CB(msg):
+    global RibbonBridgePose_2
+    RibbonBridgePose_2 = msg
+
+def sub_RibbonBridgePose_3_CB(msg):
+    global RibbonBridgePose_3
+    RibbonBridgePose_3 = msg
+
+def sub_RibbonBridgePath_1_CB(msg):
+    global RibbonBridgePath_1
+    RibbonBridgePath_1 = msg
+
+def sub_RibbonBridgePath_2_CB(msg):
+    global RibbonBridgePath_2
+    RibbonBridgePath_2 = msg
+
+def sub_RibbonBridgePath_3_CB(msg):
+    global RibbonBridgePath_3
+    RibbonBridgePath_3 = msg
 
 
 def img_cb(msg):
-    try:
-        #rospy.loginfo("Subscribed Image Topic !")
-        cv_img = CvBridge().imgmsg_to_cv2(msg, "bgr8")
+    #try:
+    #rospy.loginfo("Subscribed Image Topic !")
+    cv_img = CvBridge().imgmsg_to_cv2(msg, "bgr8")
 
-        cv_height = cv_img.shape[0]
-        cv_width = cv_img.shape[1]
-
-        cv2.circle(cv_img, (int(ribbon_bridge_1.position.x),int(ribbon_bridge_1.position.y)), 20, (255,0,0), -1)
-        cv2.circle(cv_img, (int(ribbon_bridge_2.position.x),int(ribbon_bridge_2.position.y)), 20, (0,255,0), -1)
-        cv2.circle(cv_img, (int(ribbon_bridge_3.position.x),int(ribbon_bridge_3.position.y)), 20, (0,0,255), -1)
+    cv_height = cv_img.shape[0]
+    cv_width = cv_img.shape[1]
 
 
+    for i in range(len(RibbonBridgePath_1.poses)):
+        if i == 0:
+            cv2.circle(cv_img, (int(RibbonBridgePath_1.poses[i].pose.position.y), int(RibbonBridgePath_1.poses[i].pose.position.x)), 20, (255,0,0), -1)
+
+        elif i == len(RibbonBridgePath_1.poses)-1:
+            cv2.circle(cv_img, (int(RibbonBridgePath_1.poses[i].pose.position.y), int(RibbonBridgePath_1.poses[i].pose.position.x)), 20, (255,255,0), -1)
+            cv2.line(cv_img, (int(RibbonBridgePath_1.poses[i-1].pose.position.y), int(RibbonBridgePath_1.poses[i-1].pose.position.x)), (int(RibbonBridgePath_1.poses[i].pose.position.y), int(RibbonBridgePath_1.poses[i].pose.position.x)), (255, 255, 255), thickness=4)
+
+        else:
+            cv2.circle(cv_img, (int(RibbonBridgePath_1.poses[i].pose.position.y), int(RibbonBridgePath_1.poses[i].pose.position.x)), 20, (0,0,255), -1)
+
+            if i == 1:
+                cv2.arrowedLine(cv_img, (int(RibbonBridgePath_1.poses[i-1].pose.position.y), int(RibbonBridgePath_1.poses[i-1].pose.position.x)), (int(RibbonBridgePath_1.poses[i].pose.position.y), int(RibbonBridgePath_1.poses[i].pose.position.x)), (0, 0, 255), thickness=4)
+            else:
+                cv2.line(cv_img, (int(RibbonBridgePath_1.poses[i-1].pose.position.y), int(RibbonBridgePath_1.poses[i-1].pose.position.x)), (int(RibbonBridgePath_1.poses[i].pose.position.y), int(RibbonBridgePath_1.poses[i].pose.position.x)), (255, 255, 255), thickness=4)
+
+
+        for i in range(len(RibbonBridgePath_2.poses)):
+            if i == 0:
+                cv2.circle(cv_img, (int(RibbonBridgePath_2.poses[i].pose.position.y), int(RibbonBridgePath_2.poses[i].pose.position.x)), 20, (255,0,0), -1)
+
+            elif i == len(RibbonBridgePath_2.poses)-1:
+                cv2.circle(cv_img, (int(RibbonBridgePath_2.poses[i].pose.position.y), int(RibbonBridgePath_2.poses[i].pose.position.x)), 20, (255,255,0), -1)
+                cv2.line(cv_img, (int(RibbonBridgePath_2.poses[i-1].pose.position.y), int(RibbonBridgePath_2.poses[i-1].pose.position.x)), (int(RibbonBridgePath_2.poses[i].pose.position.y), int(RibbonBridgePath_2.poses[i].pose.position.x)), (255, 255, 255), thickness=4)
+
+            else:
+                cv2.circle(cv_img, (int(RibbonBridgePath_2.poses[i].pose.position.y), int(RibbonBridgePath_2.poses[i].pose.position.x)), 20, (0,0,255), -1)
+
+                if i == 1:
+                    cv2.arrowedLine(cv_img, (int(RibbonBridgePath_2.poses[i-1].pose.position.y), int(RibbonBridgePath_2.poses[i-1].pose.position.x)), (int(RibbonBridgePath_2.poses[i].pose.position.y), int(RibbonBridgePath_2.poses[i].pose.position.x)), (0, 0, 255), thickness=4)
+                else:
+                    cv2.line(cv_img, (int(RibbonBridgePath_2.poses[i-1].pose.position.y), int(RibbonBridgePath_2.poses[i-1].pose.position.x)), (int(RibbonBridgePath_2.poses[i].pose.position.y), int(RibbonBridgePath_2.poses[i].pose.position.x)), (255, 255, 255), thickness=4)
+
+
+        for i in range(len(RibbonBridgePath_3.poses)):
+            if i == 0:
+                cv2.circle(cv_img, (int(RibbonBridgePath_3.poses[i].pose.position.y), int(RibbonBridgePath_3.poses[i].pose.position.x)), 20, (255,0,0), -1)
+
+            elif i == len(RibbonBridgePath_3.poses)-1:
+                cv2.circle(cv_img, (int(RibbonBridgePath_3.poses[i].pose.position.y), int(RibbonBridgePath_3.poses[i].pose.position.x)), 20, (255,255,0), -1)
+                cv2.line(cv_img, (int(RibbonBridgePath_3.poses[i-1].pose.position.y), int(RibbonBridgePath_3.poses[i-1].pose.position.x)), (int(RibbonBridgePath_3.poses[i].pose.position.y), int(RibbonBridgePath_3.poses[i].pose.position.x)), (255, 255, 255), thickness=4)
+
+            else:
+                cv2.circle(cv_img, (int(RibbonBridgePath_3.poses[i].pose.position.y), int(RibbonBridgePath_3.poses[i].pose.position.x)), 20, (0,0,255), -1)
+
+                if i == 1:
+                    cv2.arrowedLine(cv_img, (int(RibbonBridgePath_3.poses[i-1].pose.position.y), int(RibbonBridgePath_3.poses[i-1].pose.position.x)), (int(RibbonBridgePath_3.poses[i].pose.position.y), int(RibbonBridgePath_3.poses[i].pose.position.x)), (0, 0, 255), thickness=4)
+                else:
+                    cv2.line(cv_img, (int(RibbonBridgePath_3.poses[i-1].pose.position.y), int(RibbonBridgePath_3.poses[i-1].pose.position.x)), (int(RibbonBridgePath_3.poses[i].pose.position.y), int(RibbonBridgePath_3.poses[i].pose.position.x)), (255, 255, 255), thickness=4)
 
 
 
-    except CvBridgeError, e:
-        rospy.logerror("Failed to Subscribe Image Topic")
+    #except CvBridgeError, e:
+        #rospy.logerror("Failed to Subscribe Image Topic")
 
 
 
@@ -69,11 +130,13 @@ def main():
 
     sub_img = rospy.Subscriber("/aerial_camera/camera1/image_raw", Image, img_cb)
 
-    sub_pose1 = rospy.Subscriber("/ribbon_bridge_path_generate/control_ribbon_bridge_pose_1", Pose, CB1)
+    rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_1", Pose, sub_RibbonBridgePose_1_CB)
+    rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_2", Pose, sub_RibbonBridgePose_2_CB)
+    rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_3", Pose, sub_RibbonBridgePose_3_CB)
 
-    sub_pose2 = rospy.Subscriber("/ribbon_bridge_path_generate/control_ribbon_bridge_pose_2", Pose, CB2)
-
-    sub_pose3 = rospy.Subscriber("/ribbon_bridge_path_generate/control_ribbon_bridge_pose_3", Pose, CB3)
+    rospy.Subscriber("/ribbon_bridge_path_generate/path", Path, sub_RibbonBridgePath_1_CB)
+    rospy.Subscriber("/ribbon_bridge_path_generate/path2", Path, sub_RibbonBridgePath_2_CB)
+    rospy.Subscriber("/ribbon_bridge_path_generate/path3", Path, sub_RibbonBridgePath_3_CB)
 
 
 if __name__ == "__main__":

@@ -41,8 +41,8 @@ class PathPlanning():
 
         self.Goal_pose = Pose() #目的地
 
-        self.Boat_diagonal = 200 #75m上空から撮影した時の浮体のサイズ
-        self.Costmap_size = 300
+        self.Boat_diagonal = 180 #75m上空から撮影した時の浮体のサイズ
+        self.Costmap_size = 250
 
         #浮体のPose
         self.RibbonBridgePose_1 = Pose() #制御対象
@@ -52,7 +52,7 @@ class PathPlanning():
         #それぞれの浮体の位置をsubscribeする
         self.sub_RibbonBridgePose_1 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_1", Pose, self.sub_RibbonBridgePose_1_CB)
         self.sub_RibbonBridgePose_2 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_2", Pose, self.sub_RibbonBridgePose_2_CB)
-        #self.sub_RibbonBridgePose_3 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_3", Pose, self.sub_RibbonBridgePose_3_CB)
+        self.sub_RibbonBridgePose_3 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_3", Pose, self.sub_RibbonBridgePose_3_CB)
 
         self.sub_Goal_pose = rospy.Subscriber("/ribbon_bridge_path_generate/goal_position", Pose, self.sub_Goal_pose_CB)
 
@@ -86,7 +86,7 @@ class PathPlanning():
             if self.CreatedBlankImageFlag == True:
                 #障害物の浮体の位置をコストマップに追加する
                 self.add_cost(self.RibbonBridgePose_2.position.x, self.RibbonBridgePose_2.position.y, self.Costmap_size)
-                #self.add_cost(self.RibbonBridgePose_3.position.x, self.RibbonBridge_3.position.y, self.Boat_diagonal)
+                self.add_cost(self.RibbonBridgePose_3.position.x, self.RibbonBridgePose_3.position.y, self.Costmap_size)
                 return True
 
         except:
@@ -133,10 +133,10 @@ class PathPlanning():
         costmap = cv2.imread(self.map_path)
 
         #円形のコストマップ
-        #cv2.circle(costmap, (int(centerX), int(centerY)), int(radius*1.75), (0,0,0), -1)
+        cv2.circle(costmap, (int(centerX), int(centerY)), int(radius), (0,0,0), -1)
 
         #四角形のコストマップ
-        cv2.rectangle(costmap, (int(centerX-radius*1.5),int(centerY-radius*1.5)), (int(centerX+radius*1.5),int(centerY+radius*1.5)), (0,0,0), -1)
+        #cv2.rectangle(costmap, (int(centerX-radius*1.5),int(centerY-radius*1.5)), (int(centerX+radius*1.5),int(centerY+radius*1.5)), (0,0,0), -1)
 
         cv2.imwrite(self.map_path, costmap)
 
@@ -411,7 +411,7 @@ class PathPlanning():
                 self.publish_path_msg(start, goal, find_path)
                 self.publish_path_status(True)
 
-                self.make_result_img(start, goal, find_path)
+                #self.make_result_img(start, goal, find_path)
                 #self.make_result_img_x10(start, goal, find_path)
 
             else:
@@ -426,8 +426,8 @@ class PathPlanning():
 
 
     def main(self):
-        self.Goal_pose.position.x = self.map_width/2 + 500
-        self.Goal_pose.position.y = self.map_height/2 + 200
+        self.Goal_pose.position.x = self.map_width/2 + 300
+        self.Goal_pose.position.y = self.map_height/2
 
         while not rospy.is_shutdown():
             #必要な情報がsubscribeされるまでストップする
