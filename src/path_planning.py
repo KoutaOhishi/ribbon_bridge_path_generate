@@ -129,14 +129,14 @@ class PathPlanning():
 
         self.CreatedBlankImageFlag = True
 
-    def add_cost(self, centerX, centerY, radius):
+    def add_cost(self, centerX, centerY, costmap_size):
         costmap = cv2.imread(self.map_path)
 
         #円形のコストマップ
-        cv2.circle(costmap, (int(centerX), int(centerY)), int(radius), (0,0,0), -1)
+        #cv2.circle(costmap, (int(centerX), int(centerY)), int(costmap_size), (0,0,0), -1)
 
         #四角形のコストマップ
-        #cv2.rectangle(costmap, (int(centerX-radius*1.5),int(centerY-radius*1.5)), (int(centerX+radius*1.5),int(centerY+radius*1.5)), (0,0,0), -1)
+        cv2.rectangle(costmap, (int(centerX-costmap_size/2),int(centerY-costmap_size/2)), (int(centerX+costmap_size/2),int(centerY+costmap_size/2)), (0,0,0), -1)
 
         cv2.imwrite(self.map_path, costmap)
 
@@ -146,6 +146,7 @@ class PathPlanning():
 
         #cv2.imshow("costmap", show_img)
         #cv2.waitKey(1)
+
 
     def show_img(self):
         img = cv2.imread(self.map_path)

@@ -67,7 +67,7 @@ class PathMoving():
         self.Fx = 0.0
         self.Fy = 0.0
         self.Fz = 0.0
-        self.Kp = 0.25
+        self.Kp = 0.5
         self.Ki = 0.0
         self.Kd = 0.0
         self.count = 1
