@@ -42,12 +42,12 @@ class PathPlanning():
         self.Goal_pose = Pose() #目的地
 
         self.Boat_diagonal = 180 #75m上空から撮影した時の浮体のサイズ
-        self.Costmap_size = 250
+        self.Costmap_size = 300
 
         #浮体のPose
         self.RibbonBridgePose_1 = Pose() #制御対象
         self.RibbonBridgePose_2 = Pose() #障害物
-        #self.RibbonBridgePose_3 = Pose() #障害物
+        self.RibbonBridgePose_3 = Pose() #障害物
 
         #それぞれの浮体の位置をsubscribeする
         self.sub_RibbonBridgePose_1 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_1", Pose, self.sub_RibbonBridgePose_1_CB)
@@ -133,10 +133,11 @@ class PathPlanning():
         costmap = cv2.imread(self.map_path)
 
         #円形のコストマップ
-        #cv2.circle(costmap, (int(centerX), int(centerY)), int(costmap_size), (0,0,0), -1)
+        #cv2.circle(costmap, (int(centerX), int(centerY)), int(costmap_size/1.25), (0,0,0), -1)
 
         #四角形のコストマップ
-        cv2.rectangle(costmap, (int(centerX-costmap_size/2),int(centerY-costmap_size/2)), (int(centerX+costmap_size/2),int(centerY+costmap_size/2)), (0,0,0), -1)
+        #cv2.rectangle(costmap, (int(centerX-costmap_size/1.5),int(centerY-costmap_size/2)), (int(centerX+costmap_size/1.5),int(centerY+costmap_size/2)), (0,0,0), -1)
+        cv2.rectangle(costmap, (int(centerX-costmap_size),int(centerY-costmap_size/1.5)), (int(centerX+costmap_size),int(centerY+costmap_size/1.5)), (0,0,0), -1)
 
         cv2.imwrite(self.map_path, costmap)
 
@@ -254,6 +255,18 @@ class PathPlanning():
             rospy.logwarn("***")
 
     def publish_path_msg(self, start, goal, path):
+        path_msg = Path()
+        for i in range(len(path)):
+            poseStamped = PoseStamped()
+            poseStamped.pose.position.x = path[i][0]*10
+            poseStamped.pose.position.y = path[i][1]*10
+            path_msg.poses.append(poseStamped)
+
+        print "Path_num:[%s]"%str(len(path_msg.poses))
+        self.pub_path.publish(path_msg)
+        self.GeneratePathFlag = True
+
+    def _publish_path_msg(self, start, goal, path):
         ### 引数のpathは1/10のサイズで計測したものなので注意
         path_msg = Path()
 
@@ -427,8 +440,16 @@ class PathPlanning():
 
 
     def main(self):
-        self.Goal_pose.position.x = self.map_width/2 + 300
+        #self.Goal_pose.position.x = self.map_width/2 + 300
+        #self.Goal_pose.position.y = self.map_height/2
+
+        self.Goal_pose.position.x = self.map_width/2 + 350
         self.Goal_pose.position.y = self.map_height/2
+
+        #self.Goal_pose.position.x = self.map_width/2
+        #self.Goal_pose.position.y = self.map_height/2 - 255
+
+
 
         while not rospy.is_shutdown():
             #必要な情報がsubscribeされるまでストップする

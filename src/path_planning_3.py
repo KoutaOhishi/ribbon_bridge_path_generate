@@ -42,19 +42,19 @@ class PathPlanning():
         self.Goal_pose = Pose() #目的地
 
         self.Boat_diagonal = 180 #75m上空から撮影した時の浮体のサイズ
-        self.Costmap_size = 250
+        self.Costmap_size = 300
 
         #浮体のPose
-        self.RibbonBridgePose_1 = Pose() #障害物
+        self.RibbonBridgePose_1 = Pose()
         self.RibbonBridgePose_2 = Pose() #制御対象
-        self.RibbonBridgePose_3 = Pose() #障害物
+        self.RibbonBridgePose_3 = Pose()
 
         #それぞれの浮体の位置をsubscribeする
         self.sub_RibbonBridgePose_1 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_1", Pose, self.sub_RibbonBridgePose_1_CB)
         self.sub_RibbonBridgePose_2 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_2", Pose, self.sub_RibbonBridgePose_2_CB)
         self.sub_RibbonBridgePose_3 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_3", Pose, self.sub_RibbonBridgePose_3_CB)
 
-        self.sub_Goal_pose = rospy.Subscriber("/ribbon_bridge_path_generate/goal_position2", Pose, self.sub_Goal_pose_CB)
+        self.sub_Goal_pose = rospy.Subscriber("/ribbon_bridge_path_generate/goal_position3", Pose, self.sub_Goal_pose_CB)
 
         self.sub_Image = rospy.Subscriber(self.img_topic_name, Image, self.sub_Image_CB)
 
@@ -133,10 +133,11 @@ class PathPlanning():
         costmap = cv2.imread(self.map_path)
 
         #円形のコストマップ
-        #cv2.circle(costmap, (int(centerX), int(centerY)), int(costmap_size), (0,0,0), -1)
+        #cv2.circle(costmap, (int(centerX), int(centerY)), int(costmap_size/1.25), (0,0,0), -1)
 
         #四角形のコストマップ
-        cv2.rectangle(costmap, (int(centerX-costmap_size),int(centerY-costmap_size)), (int(centerX+costmap_size),int(centerY+costmap_size)), (0,0,0), -1)
+        #cv2.rectangle(costmap, (int(centerX-costmap_size/1.5),int(centerY-costmap_size/2)), (int(centerX+costmap_size/1.5),int(centerY+costmap_size/2)), (0,0,0), -1)
+        cv2.rectangle(costmap, (int(centerX-costmap_size),int(centerY-costmap_size/1.5)), (int(centerX+costmap_size),int(centerY+costmap_size/1.5)), (0,0,0), -1)
 
         cv2.imwrite(self.map_path, costmap)
 
@@ -147,6 +148,7 @@ class PathPlanning():
         #cv2.imshow("costmap", show_img)
         #cv2.waitKey(1)
 
+
     def show_img(self):
         img = cv2.imread(self.map_path)
 
@@ -154,7 +156,7 @@ class PathPlanning():
             show_img_size = (self.map_width/10, self.map_height/10)
             #show_img_size = (self.map_width/5, self.map_height/5)
             show_img = cv2.resize(img, show_img_size)
-            cv2.imshow("path_image3", show_img)
+            cv2.imshow("path_image", show_img)
             cv2.waitKey(1)
         except:
             pass
@@ -208,7 +210,7 @@ class PathPlanning():
         show_img_size = (self.map_width/10, self.map_height/10)
         #show_img_size = (self.map_width/5, self.map_height/5)
         show_img = cv2.resize(map_color, show_img_size)
-        cv2.imshow("path_image3", show_img)
+        cv2.imshow("path_image", show_img)
         cv2.waitKey(1)
 
         cv2.imwrite(self.pkg_path + "/img/path3.png", map_color)
@@ -253,6 +255,18 @@ class PathPlanning():
             rospy.logwarn("***")
 
     def publish_path_msg(self, start, goal, path):
+        path_msg = Path()
+        for i in range(len(path)):
+            poseStamped = PoseStamped()
+            poseStamped.pose.position.x = path[i][0]*10
+            poseStamped.pose.position.y = path[i][1]*10
+            path_msg.poses.append(poseStamped)
+
+        print "Path_num:[%s]"%str(len(path_msg.poses))
+        self.pub_path.publish(path_msg)
+        self.GeneratePathFlag = True
+
+    def _publish_path_msg(self, start, goal, path):
         ### 引数のpathは1/10のサイズで計測したものなので注意
         path_msg = Path()
 
@@ -399,7 +413,6 @@ class PathPlanning():
             goal = (goal_y/10, goal_x/10)
             #start = (start_y/5, start_x/5)
             #goal = (goal_y/5, goal_x/5)
-
             find_path = self.astar(resize_costmap, start, goal, self.distance, self.heuristic)
 
             #そのままのサイズで計算
@@ -427,8 +440,14 @@ class PathPlanning():
 
 
     def main(self):
+        #self.Goal_pose.position.x = self.map_width/2 + 300
+        #self.Goal_pose.position.y = self.map_height/2
+
         self.Goal_pose.position.x = self.map_width/2
         self.Goal_pose.position.y = self.map_height/2
+
+
+
 
 
         while not rospy.is_shutdown():

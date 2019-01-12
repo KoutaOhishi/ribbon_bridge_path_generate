@@ -13,12 +13,10 @@ from ribbon_bridge_measurement.msg import *
 from matplotlib import pyplot as plt
 from nav_msgs.msg import *
 
-class PathMoving():
+class LinearControl():
     def __init__(self):
         self.Model_name = "tug_boat_1"
         self.Reference_frame = "world"
-
-        self.Path_status = False #Pathの生成が上手くできていればTrue
 
         self.Goal_pose = Pose()
         self.Model_pose = Pose()
@@ -26,24 +24,18 @@ class PathMoving():
         self.True_Model_state = ModelState() #浮体の位置の真値
 
         self.Path = Path()
-        self.GetPathFlag = False
+        self.GetPathFlag = False #Pathを受け取れたらTrue
+        self.Path_status = False #Pathの生成が上手くできていればTrue
 
-        self.Duration_time = 0.01 #一回の操作で浮体に力を与える時間
-        self.Arrival_distance = 5 #この値より小さくなれば到着したと判定する(小さすぎると止まるタイミングを見失う)
-        self.NotArrival_distance = self.Arrival_distance + 1.0
+        self.Arrival_distance = 5 #この値より小さくなれば到着したとみなす
+        self.NotArrival_distance = self.Arrival_distance + 1
 
         self.ArrivedFlag_X = False
         self.ArrivedFlag_Y = False
         self.ArrivedFlag_Z = False
 
-        #浮体のPose
-        self.RibbonBridgePose_1 = Pose() #障害部
-        self.RibbonBridgePose_2 = Pose() #制御対象
-        #self.RibbonBridgePose_3 = Pose() #障害物
-
-        #それぞれの浮体の位置をsubscribeする
-        self.sub_RibbonBridgePose_1 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_1", Pose, self.sub_RibbonBridgePose_1_CB)
-        self.sub_RibbonBridgePose_2 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_2", Pose, self.sub_RibbonBridgePose_2_CB)
+        #self.sub_RibbonBridgePose_1 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_1", Pose, self.sub_RibbonBridgePose_1_CB)
+        #self.sub_RibbonBridgePose_2 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_2", Pose, self.sub_RibbonBridgePose_2_CB)
         self.sub_RibbonBridgePose_3 = rospy.Subscriber("/ribbon_bridge_path_generate/RibbonBridgePose_3", Pose, self.sub_RibbonBridgePose_3_CB)
 
         self.sub_True_Model_pose = rospy.Subscriber("/gazebo/model_states", ModelStates, self.sub_True_Model_pose_CB)
@@ -54,8 +46,7 @@ class PathMoving():
 
         self.sub_Path_status = rospy.Subscriber("/ribbon_bridge_path_generate/status3", Bool, self.sub_Path_status_CB)
 
-        self.pub_Model_pose = rospy.Publisher("/gazebo/set_model_state", ModelState, queue_size=1)
-        #self.pub_Model_pose = rospy.Publisher("/gazebo/set_link_state", LinkState, queue_size=1)
+        self.pub_Is_arrived = rospy.Publisher("/ribbon_bridge_path_generate/is_RibbonBridge3_arrived", Bool, queue_size=1)
 
         #PID制御用のパラメータ
         self.DistX_1 = 0.0
@@ -67,16 +58,14 @@ class PathMoving():
         self.Fx = 0.0
         self.Fy = 0.0
         self.Fz = 0.0
-        self.Kp = 0.5
-        self.Ki = 0.0
-        self.Kd = 0.0
-        self.count = 1
+        self.Kp = 0.05#0.01
+        self.Ki = 0.00000
+        self.Kd = 0.001
+        self.count = 0
+
 
     def sub_Goal_pose_CB(self, msg):
-        self.Goal_pose = msg
-        self.ArrivedFlag_X = False
-        self.ArrivedFlag_Y = False
-        self.ArrivedFlag_Z = False
+        self.Goal_pose = msg.data
 
     def sub_Boat_num_CB(self, msg):
         self.Boat_num = msg.data
@@ -120,47 +109,21 @@ class PathMoving():
             if abs(self.Model_pose.position.y - self.Goal_pose.position.y) >= self.NotArrival_distance:
                 self.ArrivedFlag_Y = False
 
-
-
     def sub_RibbonBridgePose_1_CB(self, msg):
         self.RibbonBridgePose_1 = msg
 
     def sub_RibbonBridgePose_2_CB(self, msg):
         self.RibbonBridgePose_2 = msg
 
+    def sub_True_Model_pose_CB(self, msg):
+        """ gazebo空間における浮体の位置の真値を取得する """
+        i = msg.name.index(self.Model_name)
+        self.True_Model_state.model_name = msg.name[i]
+        self.True_Model_state.pose = msg.pose[i]
+        self.True_Model_state.twist = msg.twist[i]
+
     def stop_ribbon_bridge(self, way):
-        """ wayの向きにかかるforceを0にする→ブレーキをかける """
-        """### Pub版
-        pub_msg = ModelState()
-        pub_msg.model_name = self.Model_name
-
-        #pub_msg = LinkState()
-        #pub_msg.link_name = self.Model_name + "::body"
-        pub_msg.pose = self.True_Model_state.pose
-        pub_msg.twist = self.True_Model_state.twist
-
-        if way == "x":
-            pub_msg.twist.linear.x = 0.0
-            #if self.ArrivedFlag_Y == True:
-                #pub_msg.twist.linear.y = 0.0
-            self.pub_Model_pose.publish(pub_msg)
-            #rospy.sleep(0.1)
-
-        elif way == "y":
-            pub_msg.twist.linear.y = 0.0
-            #if self.ArrivedFlag_X == True:
-                #pub_msg.twist.linear.x = 0.0
-            self.pub_Model_pose.publish(pub_msg)
-            #rospy.sleep(0.1)
-
-
-        elif way == "z":
-            pass
-
-        else:
-            rospy.logerr("Invailed argument [%s]"%str(way))"""
-
-        ### Srv版
+        """ YOLOが止まった時は強制的に浮き橋を停止させる """
         set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
 
         model_state_srv = ModelState()
@@ -184,85 +147,82 @@ class PathMoving():
 
         try:
             set_model_state(model_state=model_state_srv)
-            #print "##########"
-            #print res
 
         except rospy.ServiceException as e:
             rospy.logerr("Service[/gazebo/set_model_state] Exception")
             rospy.sleep(5)
 
-    def sub_True_Model_pose_CB(self, msg):
-        """ gazebo空間における浮体の位置の真値を取得する """
-        i = msg.name.index(self.Model_name)
-        self.True_Model_state.model_name = msg.name[i]
-        self.True_Model_state.pose = msg.pose[i]
-        self.True_Model_state.twist = msg.twist[i]
+    def boat_acceleration(self, linear_x, linear_y, linear_z, angular_x, angular_y, angular_z):
+        ### 浮き橋にかかる加速度を設定する
+        model_state = ModelState()
+        model_state.model_name = self.Model_name
+        model_state.reference_frame = self.Reference_frame
+        model_state.pose = self.True_Model_state.pose
+        model_state.twist = self.True_Model_state.twist
 
-    def euler_to_quaternion(self, euler):
-        q = tf.transformations.quaternion_from_euler(euler.x, euler.y, euler.z)
-        return Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
+        if linear_x != 0.0:
+            model_state.twist.linear.x = linear_x
+        if linear_y != 0.0:
+            model_state.twist.linear.y = linear_y
+        if linear_z != 0.0:
+            model_state.twist.linear.z = linear_z
 
-    def quaternion_to_euler(self, quaternion):
-        e = tf.transformations.euler_from_quaternion((quaternion.x, quaternion.y, quaternion.z, quaternion.w))
-        return Vector3(x=e[0], y=e[1], z=e[2])
-
-    def Add_force_with_param(self, fx, fy, fz, tx, ty, tz):
-        apply_body_wrench = rospy.ServiceProxy("/gazebo/apply_body_wrench", ApplyBodyWrench)
-        clear_body_wrenches = rospy.ServiceProxy("/gazebo/clear_body_wrenches", BodyRequest)
-        get_link_state = rospy.ServiceProxy("/gazebo/get_link_state",GetLinkState)
-
-        target_link = self.Model_name + "::body"
-        wrench = Wrench()
-        duration = rospy.Duration(self.Duration_time) #単位はsecond
-
-        wrench.force.x = fx
-        wrench.force.y = fy
-        wrench.force.z = fz
-        wrench.torque.x = tx
-        wrench.torque.y = ty
-        wrench.torque.z = tz
+        if angular_x != 0.0:
+            model_state.twist.angular.x = angular_x
+        if angular_y != 0.0:
+            model_state.twist.angular.y = angular_y
+        if angular_z != 0.0:
+            model_state.twist.angular.z = angular_z
 
         try:
-            apply_body_wrench(body_name=target_link,
-            reference_frame=self.Reference_frame,
-            wrench=wrench,
-            duration=duration)
+            ###Publish###
+            #pub_model_state = rospy.Publisher("/gazebo/set_model_state", ModelState, queue_size=1)
+            #pub_model_state.publish(model_state)
 
-        except rospy.ServiceException as e:
-            rospy.logerr("Service[/gazebo/apply_body_wrench] Exception")
+            ###Service###
+            set_model_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
+            set_model_state(model_state=model_state)
+
+        except:
+            rospy.logerr("Failed to set ModelState")
             rospy.sleep(5)
 
-    def move(self):
+    def pid_control(self):
+        dist_x = self.Goal_pose.position.x - self.Model_pose.position.x
+        dist_y = self.Model_pose.position.y - self.Goal_pose.position.y
+
+        fx = self.Fx + self.Kp * (dist_x-self.DistX_1) + self.Ki * dist_x + self.Kd * ((dist_x-self.DistX_1)-(self.DistX_1-self.DistX_2))
+        fy = self.Fy + self.Kp * (dist_y-self.DistY_1) + self.Ki * dist_y + self.Kd * ((dist_y-self.DistY_1)-(self.DistY_1-self.DistY_2))
+
+        if self.count != 0:#１回めの計算は数値が正しくないので飛ばす
+            self.boat_acceleration(fx, fy, 0.0, 0.0, 0.0, 0.0)
+
+        self.Fx = fx
+        self.Fy = fy
+        #self.Fz = tz
+
+        self.DistX_2 = self.DistX_1
+        self.DistY_2 = self.DistY_1
+        #self.DistZ_2 = self.DistZ_1
+
+        self.DistX_1 = dist_x
+        self.DistY_1 = dist_y
+        #self.DistZ_1 = dist_z
+
+        self.count += 1
+        time.sleep(1)
+
+        print "Goal_position:x[%s] y[%s]"%(str(round(self.Goal_pose.position.x)),str(round(self.Goal_pose.position.y)))
+        print "Model_position:x[%s] y[%s]"%(str(round(self.Model_pose.position.x)),str(round(self.Model_pose.position.y)))
+        print "Distance:x[%s], y[%s]"%(str(round(dist_x, 2)), str(round(dist_y, 2)))
+        print "Acceleration:x[%s], y[%s]"%(str(round(fx, 2)), str(round(fy, 2)))
+        print "Arrived:x[%s], y[%s]"%(str(self.ArrivedFlag_X), str(self.ArrivedFlag_Y))
+        print "---"
+
         if self.ArrivedFlag_X == True and self.ArrivedFlag_Y == True:
-            pass
-
+            self.pub_Is_arrived.publish(True)
         else:
-            dist_x = self.Goal_pose.position.x - self.Model_pose.position.x
-            dist_y = self.Model_pose.position.y - self.Goal_pose.position.y
-
-            print "Goal_position:x[%s] y[%s]"%(str(round(self.Goal_pose.position.x)),str(round(self.Goal_pose.position.y)))
-            print "Model_position:x[%s] y[%s]"%(str(round(self.Model_pose.position.x)),str(round(self.Model_pose.position.y)))
-            print "position_distance:x[%s], y[%s]"%(str(round(dist_x, 2)), str(round(dist_y, 2)))
-            print "---"
-
-
-            fx = self.Fx + self.Kp * (dist_x-self.DistX_1) + self.Ki * dist_x + self.Kd * ((dist_x-self.DistX_1)-(self.DistX_1-self.DistX_2))
-            fy = self.Fy + self.Kp * (dist_y-self.DistY_1) + self.Ki * dist_y + self.Kd * ((dist_y-self.DistY_1)-(self.DistY_1-self.DistY_2))
-
-            self.Add_force_with_param(fx,fy,0.0,0.0,0.0,0.0)
-
-            self.Fx = fx
-            self.Fy = fy
-            #self.Fz = tz
-
-            self.DistX_2 = self.DistX_1
-            self.DistY_2 = self.DistY_1
-            #self.DistZ_2 = self.DistZ_1
-
-            self.DistX_1 = dist_x
-            self.DistY_1 = dist_y
-            #self.DistZ_1 = dist_z
-
+            self.pub_Is_arrived.publish(False)
 
     def main(self):
         rospy.loginfo("waiting path")
@@ -273,7 +233,33 @@ class PathMoving():
 
         next_goal_flag = False
 
+        ###
         while not rospy.is_shutdown():
+            if len(self.Path.poses) <=10:
+                break
+            else:
+                self.Goal_pose.position.x = self.Path.poses[10].pose.position.y
+                self.Goal_pose.position.y = self.Path.poses[10].pose.position.x
+
+            if self.sub_Boat_num.get_num_connections() == 0 or self.Path_status == False:
+                self.stop_ribbon_bridge("x")
+                self.stop_ribbon_bridge("y")
+                self.stop_ribbon_bridge("z")
+
+                if self.Path_status == False:
+                    #経路生成に問題発生
+                    rospy.logwarn("Some error has occured")
+
+                if self.sub_Boat_num.get_num_connections() == 0:
+                    #YOLOのノードとの接続が切れた場合
+                    rospy.logwarn("YOLO has Dead")
+                rospy.sleep(1)
+
+            else:
+                self.pid_control()
+        ###
+
+        """while not rospy.is_shutdown():
             if len(self.Path.poses) <= 2:
                 break
 
@@ -312,24 +298,21 @@ class PathMoving():
                     #else:
                         #next_goal_flag = False
 
-                self.move()
-
+                self.pid_control()
+        """
         self.Goal_pose.position.x = self.Path.poses[len(self.Path.poses)-1].pose.position.y
         self.Goal_pose.position.y = self.Path.poses[len(self.Path.poses)-1].pose.position.x
 
+
         #goalでstay
         while not rospy.is_shutdown():
-            self.move()
+            self.pid_control()
 
             if self.ArrivedFlag_X == True and self.ArrivedFlag_Y == True:
                 rospy.loginfo("***** Arrived *****")
 
-
-
-
-
 if __name__ == "__main__":
-    rospy.init_node("PathMoving", anonymous=True)
-    c = PathMoving()
+    rospy.init_node("LinearControl", anonymous=True)
+    c = LinearControl()
     c.main()
     rospy.spin()
