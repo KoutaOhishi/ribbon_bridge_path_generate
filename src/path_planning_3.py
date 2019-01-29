@@ -443,7 +443,10 @@ class PathPlanning():
         #self.Goal_pose.position.x = self.map_width/2 + 300
         #self.Goal_pose.position.y = self.map_height/2
 
-        self.Goal_pose.position.x = self.map_width/2
+        #self.Goal_pose.position.x = self.map_width/2 + 100 + 200
+        #self.Goal_pose.position.y = self.map_height/2
+
+        self.Goal_pose.position.x = 1413
         self.Goal_pose.position.y = self.map_height/2
 
 

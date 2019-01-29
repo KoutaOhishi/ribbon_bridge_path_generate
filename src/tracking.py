@@ -52,6 +52,8 @@ class Tracking():
 
         self.pubTrackerStatus = rospy.Publisher("/ribbon_bridge_path_generate/tracking_status", Bool, queue_size=1) #TrackingができないときはFalse
 
+        self.pubResultImage = rospy.Publisher("/ribbon_bridge_path_generate/tracking_result", Image, queue_size=1)
+
     def subImage_CB(self, msg):
         try:
             self.ImageWidth = msg.width
@@ -59,15 +61,27 @@ class Tracking():
 
             cv_img = CvBridge().imgmsg_to_cv2(msg, "bgr8")
 
-            #浮体の位置をマークする
-            cv2.circle(cv_img, (int(self.RibbonBridgePose_1.position.x), int(self.RibbonBridgePose_1.position.y)), 20, (0,0,255), -1)
-            cv2.circle(cv_img, (int(self.RibbonBridgePose_2.position.x), int(self.RibbonBridgePose_2.position.y)), 20, (255,0,0), -1)
-            cv2.circle(cv_img, (int(self.RibbonBridgePose_3.position.x), int(self.RibbonBridgePose_3.position.y)), 20, (0,255,0), -1)
+            if math.isnan(self.RibbonBridgePose_1.position.x) == False and math.isnan(self.RibbonBridgePose_1.position.y) == False:
+                #浮体の位置をマークする
+                cv2.circle(cv_img, (int(self.RibbonBridgePose_1.position.x), int(self.RibbonBridgePose_1.position.y)), 20, (0,0,255), -1)
+                ##他の浮体の立ち入り禁止エリアを描画
+                cv2.circle(cv_img, (int(self.RibbonBridgePose_1.position.x), int(self.RibbonBridgePose_1.position.y)), int(self.BoatDiagonal), (0,0,255), 5)
+                #浮き橋の番号を付与
+                #cv2.text()
 
-            ##他の浮体の立ち入り禁止エリアを描画
-            cv2.circle(cv_img, (int(self.RibbonBridgePose_1.position.x), int(self.RibbonBridgePose_1.position.y)), int(self.BoatDiagonal), (0,0,255), 5)
-            cv2.circle(cv_img, (int(self.RibbonBridgePose_2.position.x), int(self.RibbonBridgePose_2.position.y)), int(self.BoatDiagonal), (255,0,0), 10)
-            cv2.circle(cv_img, (int(self.RibbonBridgePose_3.position.x), int(self.RibbonBridgePose_3.position.y)), int(self.BoatDiagonal), (0,255,0), 10)
+            if math.isnan(self.RibbonBridgePose_2.position.x) == False and math.isnan(self.RibbonBridgePose_2.position.y) == False:
+                #浮体の位置をマークする
+                cv2.circle(cv_img, (int(self.RibbonBridgePose_2.position.x), int(self.RibbonBridgePose_2.position.y)), 20, (255,0,0), -1)
+                ##他の浮体の立ち入り禁止エリアを描画
+                cv2.circle(cv_img, (int(self.RibbonBridgePose_2.position.x), int(self.RibbonBridgePose_2.position.y)), int(self.BoatDiagonal), (255,0,0), 10)
+
+            if math.isnan(self.RibbonBridgePose_3.position.x) == False and math.isnan(self.RibbonBridgePose_3.position.y) == False:
+                #浮体の位置をマークする
+                cv2.circle(cv_img, (int(self.RibbonBridgePose_3.position.x), int(self.RibbonBridgePose_3.position.y)), 20, (0,255,0), -1)
+                ##他の浮体の立ち入り禁止エリアを描画
+                cv2.circle(cv_img, (int(self.RibbonBridgePose_3.position.x), int(self.RibbonBridgePose_3.position.y)), int(self.BoatDiagonal), (0,255,0), 10)
+
+
 
             #for i in range(len(self.RibbonBridges)):
                 #cv2.line(cv_img, (int(self.pastRibbonBridgePose_1.position.x), int(self.pastRibbonBridgePose_1.position.y)), (int(self.RibbonBridges[i].center.x), int(self.RibbonBridges[i].center.x)), (255,255,255), thickness=5)
@@ -79,6 +93,10 @@ class Tracking():
 
             cv2.imshow("tracker result", resize_img)
             cv2.waitKey(1)
+
+            #pub_img = CvBridge().cv2_to_imgmsg(cv_img, encoding="passthrough")
+            #self.pubResultImage.publish(pub_img)
+
 
         except CvBridgeError, e:
             rospy.logerror("Failed to Subscribe Image Topic")
@@ -101,9 +119,10 @@ class Tracking():
 
         if len(msg.RibbonBridges) != 0:
             #浮体の長さを取得する
-            self.BoatDiagonal = math.sqrt(pow((msg.RibbonBridges[0].corners[0].x-msg.RibbonBridges[0].corners[2].x),2) + pow((msg.RibbonBridges[0].corners[0].y-msg.RibbonBridges[0].corners[2].y),2))
-            #self.BoatDiagonal = self.BoatDiagonal * 0.75
-            self.isGetBoatDiagonal = True
+            if self.isGetBoatDiagonal == False:
+                self.BoatDiagonal = math.sqrt(pow((msg.RibbonBridges[0].corners[0].x-msg.RibbonBridges[0].corners[2].x),2) + pow((msg.RibbonBridges[0].corners[0].y-msg.RibbonBridges[0].corners[2].y),2))
+                self.BoatDiagonal = self.BoatDiagonal * 0.375 * 0.25
+                self.isGetBoatDiagonal = True
 
     def pubRibbonBridges(self):
         #追跡している浮体の位置をpublishする
@@ -111,19 +130,19 @@ class Tracking():
         if math.isnan(self.RibbonBridgePose_1.position.x) == True or math.isnan(self.RibbonBridgePose_1.position.y) == True:
             rospy.logerr("RibbonBridgePose_1 has NaN")
         else:
-            #rospy.loginfo("RibbonBridge_1:[%s][%s]"%(str(int(self.RibbonBridgePose_1.position.x)),str(int(self.RibbonBridgePose_1.position.y))))
+            rospy.loginfo("RibbonBridge_1:[%s][%s]"%(str(int(self.RibbonBridgePose_1.position.x)),str(int(self.RibbonBridgePose_1.position.y))))
             self.pubRibbonBridgePose_1.publish(self.RibbonBridgePose_1)
 
         if math.isnan(self.RibbonBridgePose_2.position.x) == True or math.isnan(self.RibbonBridgePose_2.position.y) == True:
             rospy.logerr("RibbonBridgePose_2 has NaN")
         else:
-            #rospy.loginfo("RibbonBridge_2:[%s][%s]"%(str(int(self.RibbonBridgePose_2.position.x)),str(int(self.RibbonBridgePose_2.position.y))))
+            rospy.loginfo("RibbonBridge_2:[%s][%s]"%(str(int(self.RibbonBridgePose_2.position.x)),str(int(self.RibbonBridgePose_2.position.y))))
             self.pubRibbonBridgePose_2.publish(self.RibbonBridgePose_2)
 
         if math.isnan(self.RibbonBridgePose_3.position.x) == True or math.isnan(self.RibbonBridgePose_3.position.y) == True:
             rospy.logerr("RibbonBridgePose_3 has NaN")
         else:
-            #rospy.loginfo("RibbonBridge_3:[%s][%s]"%(str(int(self.RibbonBridgePose_3.position.x)),str(int(self.RibbonBridgePose_3.position.y))))
+            rospy.loginfo("RibbonBridge_3:[%s][%s]"%(str(int(self.RibbonBridgePose_3.position.x)),str(int(self.RibbonBridgePose_3.position.y))))
             self.pubRibbonBridgePose_3.publish(self.RibbonBridgePose_3)
 
     def track(self):
@@ -131,17 +150,16 @@ class Tracking():
         try:
             ribbon_bridges = self.RibbonBridges
 
+            ##### RibbonBridgePose_1の探索
             if len(ribbon_bridges) == 0:
-                #rospy.logwarn("Any RibbonBridges DO NOT exist")
-                pass
-
+                rospy.logwarn("There are No RibbonBridges")
+                self.pubRibbonBridgePose_1.publish(self.pastRibbonBridgePose_1)
             else:
-                ##### RibbonBridgePose_1の探索
                 dist_list = [] #pastRibbonBridgePose_1からの距離を格納するための配列
                 for i in range(len(ribbon_bridges)):
                     dist = math.sqrt(pow(self.pastRibbonBridgePose_1.position.x-ribbon_bridges[i].center.x, 2)+pow(self.pastRibbonBridgePose_1.position.y-ribbon_bridges[i].center.y, 2))
                     dist_list.append(dist)
-                    print "No1 [%s]%s"%(str(i), str(int(dist)))
+                    #print "No1 [%s]%s"%(str(i), str(int(dist)))
 
                 if min(dist_list) > self.BoatDiagonal:
                     rospy.logwarn("RibbonBridgePose_1 -> LOST")
@@ -155,12 +173,17 @@ class Tracking():
                     ribbon_bridges.pop(target_index)
                     #ribbon_bridges.remove(ribbon_bridges[target_index])
 
-                ##### RibbonBridgePose_2の探索
+
+            ##### RibbonBridgePose_2の探索
+            if len(ribbon_bridges) == 0:
+                rospy.logwarn("There are No RibbonBridges")
+                self.pubRibbonBridgePose_2.publish(self.pastRibbonBridgePose_2)
+            else:
                 dist_list = [] #pastRibbonBridgePose_2からの距離を格納するための配列
                 for i in range(len(ribbon_bridges)):
                     dist = math.sqrt(pow(self.pastRibbonBridgePose_2.position.x-ribbon_bridges[i].center.x, 2)+pow(self.pastRibbonBridgePose_2.position.y-ribbon_bridges[i].center.y, 2))
                     dist_list.append(dist)
-                    print "No2 [%s]%s"%(str(i), str(int(dist)))
+                    #print "No2 [%s]%s"%(str(i), str(int(dist)))
 
                 if min(dist_list) > self.BoatDiagonal:
                     rospy.logwarn("RibbonBridgePose_2 -> LOST")
@@ -174,12 +197,17 @@ class Tracking():
                     ribbon_bridges.pop(target_index)
                     #ribbon_bridges.remove(ribbon_bridges[target_index])
 
-                ##### RibbonBridgePose_3の探索
+            ##### RibbonBridgePose_3の探索
+            if len(ribbon_bridges) == 0:
+                rospy.logwarn("There are No RibbonBridges")
+                self.pubRibbonBridgePose_3.publish(self.pastRibbonBridgePose_3)
+            else:
                 dist_list = [] #pastRibbonBridgePose_3からの距離を格納するための配列
                 for i in range(len(ribbon_bridges)):
                     dist = math.sqrt(pow(self.pastRibbonBridgePose_3.position.x-ribbon_bridges[i].center.x, 2)+pow(self.pastRibbonBridgePose_3.position.y-ribbon_bridges[i].center.y, 2))
                     dist_list.append(dist)
-                    print "No3 [%s]%s"%(str(i), str(int(dist)))
+                    #print "No3 [%s]%s"%(str(i), str(int(dist)))
+
 
                 if min(dist_list) > self.BoatDiagonal:
                     rospy.logwarn("RibbonBridgePose_3 -> LOST")
@@ -193,6 +221,10 @@ class Tracking():
                     ribbon_bridges.pop(target_index)
                     #ribbon_bridges.remove(ribbon_bridges[target_index])"""
 
+
+        #print "---"
+
+
         except:
             rospy.logerr("Tracking Error")
 
@@ -201,17 +233,22 @@ class Tracking():
         self.pastRibbonBridgePose_1.position.x = 300
         self.pastRibbonBridgePose_1.position.y = 200
 
-        self.pastRibbonBridgePose_2.position.x = 300
-        self.pastRibbonBridgePose_2.position.y = self.ImageHeight-200
+        #self.pastRibbonBridgePose_2.position.x = 300
+        #self.pastRibbonBridgePose_2.position.y = self.ImageHeight/2
+        self.pastRibbonBridgePose_2.position.x = 800
+        self.pastRibbonBridgePose_2.position.y = self.ImageHeight/2
 
-        self.pastRibbonBridgePose_3.position.x = 300
+        #self.pastRibbonBridgePose_3.position.x = 300
+        #self.pastRibbonBridgePose_3.position.y = self.ImageHeight-200
+        self.pastRibbonBridgePose_3.position.x = 1413 #48
         self.pastRibbonBridgePose_3.position.y = self.ImageHeight/2
 
         while not rospy.is_shutdown():
-            rospy.sleep(0.1)
             self.checkYoloIsExists()
             self.track()
             self.pubRibbonBridges()
+            #rospy.sleep(0.1)
+            time.sleep(0.1)
 
 
 if __name__ == "__main__":

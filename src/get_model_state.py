@@ -30,7 +30,7 @@ def main():
 
     rospy.Subscriber("/gazebo/model_states", ModelStates, CB)
 
-    Model_name = "tug_boat"
+    Model_name = "tug_boat_0"
 
 
 

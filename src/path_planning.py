@@ -141,8 +141,8 @@ class PathPlanning():
 
         cv2.imwrite(self.map_path, costmap)
 
-        show_img_size = (self.map_width/10, self.map_height/10)
-        #show_img_size = (self.map_width/5, self.map_height/5)
+        #show_img_size = (self.map_width/10, self.map_height/10)
+        show_img_size = (self.map_width/5, self.map_height/5)
         show_img = cv2.resize(costmap, show_img_size)
 
         #cv2.imshow("costmap", show_img)
@@ -210,8 +210,8 @@ class PathPlanning():
         show_img_size = (self.map_width/10, self.map_height/10)
         #show_img_size = (self.map_width/5, self.map_height/5)
         show_img = cv2.resize(map_color, show_img_size)
-        cv2.imshow("path_image", show_img)
-        cv2.waitKey(1)
+        #cv2.imshow("path_image", show_img)
+        #cv2.waitKey(1)
 
         cv2.imwrite(self.pkg_path + "/img/path.png", map_color)
 
@@ -443,11 +443,11 @@ class PathPlanning():
         #self.Goal_pose.position.x = self.map_width/2 + 300
         #self.Goal_pose.position.y = self.map_height/2
 
-        self.Goal_pose.position.x = self.map_width/2 + 350
-        self.Goal_pose.position.y = self.map_height/2
+        #self.Goal_pose.position.x = self.map_width/2 + 500 + 200
+        #self.Goal_pose.position.y = self.map_height/2
 
-        #self.Goal_pose.position.x = self.map_width/2
-        #self.Goal_pose.position.y = self.map_height/2 - 255
+        self.Goal_pose.position.x = 1106
+        self.Goal_pose.position.y = 450
 
 
 

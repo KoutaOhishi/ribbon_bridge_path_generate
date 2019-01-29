@@ -57,9 +57,14 @@ class LinearControl():
         self.Fy = 0.0
         self.Fz = 0.0
         self.Kp = 0.01
-        self.Ki = 0.0
-        self.Kd = 0.0
-        self.count = 1
+        self.Ki = 0.00000
+        self.Kd = 0.00001
+        self.count = 0
+
+        #PID制御のグラフ描画用の変数
+        self.count_list = []
+        self.dist_list = []
+        self.acc_list = []
 
     def sub_Goal_pose_CB(self, msg):
         self.Goal_pose = msg
@@ -194,7 +199,8 @@ class LinearControl():
         fx = self.Fx + self.Kp * (dist_x-self.DistX_1) + self.Ki * dist_x + self.Kd * ((dist_x-self.DistX_1)-(self.DistX_1-self.DistX_2))
         fy = self.Fy + self.Kp * (dist_y-self.DistY_1) + self.Ki * dist_y + self.Kd * ((dist_y-self.DistY_1)-(self.DistY_1-self.DistY_2))
 
-        self.boat_acceleration(fx, fy, 0.0, 0.0, 0.0, 0.0)
+        if self.count != 0:
+            self.boat_acceleration(fx, fy, 0.0, 0.0, 0.0, 0.0)
 
         self.Fx = fx
         self.Fy = fy
@@ -208,13 +214,26 @@ class LinearControl():
         self.DistY_1 = dist_y
         #self.DistZ_1 = dist_z
 
+        self.count += 1
         time.sleep(1)
 
         print "Goal_position:x[%s] y[%s]"%(str(round(self.Goal_pose.position.x)),str(round(self.Goal_pose.position.y)))
         print "Model_position:x[%s] y[%s]"%(str(round(self.Model_pose.position.x)),str(round(self.Model_pose.position.y)))
-        print "position_distance:x[%s], y[%s]"%(str(round(dist_x, 2)), str(round(dist_y, 2)))
-        print "acceleration:x[%s], y[%s]"%(str(round(fx, 2)), str(round(fy, 2)))
+        print "Distance:x[%s], y[%s]"%(str(round(dist_x, 2)), str(round(dist_y, 2)))
+        print "Acceleration:x[%s], y[%s]"%(str(round(fx, 2)), str(round(fy, 2)))
+        print "Arrived:x[%s], y[%s]"%(str(self.ArrivedFlag_X), str(self.ArrivedFlag_Y))
         print "---"
+
+        self.dist_list.append(dist_x)
+        self.acc_list.append(fx)
+        self.count_list.append(self.count)
+        plt.plot(self.count_list, self.dist_list, label="distance")
+        #plt.plot(self.count_list, self.acc_list, label="acceleration")
+        plt.ylim(-25, 500) #見やすくするため
+        plt.xlim(0, self.count)
+        plt.hlines(y=0, xmin=0, xmax=self.count, colors='r', linewidths=1)
+        plt.pause(0.1)
+
 
 
     def main(self):

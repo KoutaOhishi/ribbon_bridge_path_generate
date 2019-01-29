@@ -58,9 +58,9 @@ class LinearControl():
         self.Fx = 0.0
         self.Fy = 0.0
         self.Fz = 0.0
-        self.Kp = 0.05#0.01
+        self.Kp = 0.01#0.01
         self.Ki = 0.00000
-        self.Kd = 0.001
+        self.Kd = 0.000#0.001
         self.count = 0
 
 
